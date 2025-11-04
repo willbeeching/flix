@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.PlexScreensaver" parent="Theme.Material3.DayNight">
+        <!-- Disable action bar -->
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+
+        <!-- Color attributes -->
+        <item name="colorPrimary">@color/plex_orange</item>
+        <item name="colorPrimaryDark">@color/plex_orange_dark</item>
+        <item name="colorAccent">@color/plex_orange</item>
+    </style>
+
+    <style name="Theme.PlexScreensaver" parent="Base.Theme.PlexScreensaver" />
+</resources>
+

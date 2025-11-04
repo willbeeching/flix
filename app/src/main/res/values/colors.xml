@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="plex_orange">#E5A00D</color>
+    <color name="plex_orange_dark">#CC7B19</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="background_dark">#121212</color>
+</resources>
+
+

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Plex Screensaver</string>
+    <string name="screensaver_name">Plex Screensaver</string>
+    <string name="screensaver_description">Display beautiful artwork from your Plex library</string>
+    <string name="screensaver_image_description">Plex artwork</string>
+    <string name="title_logo_description">Title logo</string>
+    <string name="plexflix_logo_description">PlexFlix logo</string>
+    <string name="settings_title">Plex Settings</string>
+</resources>
+

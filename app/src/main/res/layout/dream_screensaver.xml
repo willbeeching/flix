@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="false"
+    android:background="@android:color/black">
+
+    <!-- Primary image view -->
+    <ImageView
+        android:id="@+id/screensaver_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:adjustViewBounds="false"
+        android:alpha="1"
+        android:contentDescription="@string/screensaver_image_description" />
+
+    <!-- Secondary image view for smooth crossfade -->
+    <ImageView
+        android:id="@+id/screensaver_image_alternate"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:adjustViewBounds="false"
+        android:alpha="0"
+        android:contentDescription="@string/screensaver_image_description" />
+
+    <!-- Gradient overlay for logo framing - bottom-left to top-right -->
+    <View
+        android:id="@+id/logo_gradient"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/logo_gradient_overlay" />
+
+    <!-- Gradient overlay for PlexFlix logo - full screen, concentrated in bottom-right -->
+    <View
+        android:id="@+id/logo_gradient_right"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/logo_gradient_overlay_right" />
+
+    <!-- PlexFlix branding - bottom right corner -->
+    <ImageView
+        android:id="@+id/plexflix_logo"
+        android:layout_width="120dp"
+        android:layout_height="35dp"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="60dp"
+        android:layout_marginBottom="60dp"
+        android:src="@drawable/plexflix_logo"
+        android:contentDescription="@string/plexflix_logo_description" />
+
+    <!-- Title logo/card - Netflix style -->
+    <ImageView
+        android:id="@+id/title_logo"
+        android:layout_width="240dp"
+        android:layout_height="90dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="60dp"
+        android:layout_marginBottom="60dp"
+        android:scaleType="fitStart"
+        android:adjustViewBounds="false"
+        android:visibility="gone"
+        android:contentDescription="@string/title_logo_description" />
+
+</FrameLayout>
+
