@@ -218,9 +218,10 @@ class PlexApiClient(private val authToken: String) {
 
             // Fetch a batch with random offset
             // sort=random ensures variety within the batch too
-            val url = "${server.uri}/library/sections/$sectionId/all?includeGuids=1&sort=random&X-Plex-Container-Size=$batchSize&X-Plex-Container-Start=$offset&X-Plex-Token=${server.accessToken}"
+            // includeExtras=1 and includeImages=1 to get Image child elements (clearLogo)
+            val url = "${server.uri}/library/sections/$sectionId/all?includeGuids=1&includeExtras=1&includeImages=1&sort=random&X-Plex-Container-Size=$batchSize&X-Plex-Container-Start=$offset&X-Plex-Token=${server.accessToken}"
 
-            Log.d(TAG, "Fetching $batchSize items from section $sectionId (offset: $offset)")
+            Log.d(TAG, "Fetching $batchSize items from section $sectionId (offset: $offset) with Image elements")
 
             val request = Request.Builder()
                 .url(url)
@@ -292,6 +293,7 @@ class PlexApiClient(private val authToken: String) {
             var eventType = parser.eventType
             var currentItem: MutableMap<String, String>? = null
             var itemGuids = mutableListOf<String>()
+            var clearLogoUrl: String? = null
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 if (eventType == XmlPullParser.START_TAG) {
@@ -299,6 +301,7 @@ class PlexApiClient(private val authToken: String) {
                         "Video", "Directory" -> {
                             currentItem = mutableMapOf()
                             itemGuids = mutableListOf()
+                            clearLogoUrl = null  // Reset for new item
 
                             val title = parser.getAttributeValue(null, "title") ?: ""
                             val thumb = parser.getAttributeValue(null, "thumb")
@@ -329,6 +332,16 @@ class PlexApiClient(private val authToken: String) {
                                 itemGuids.add(guidId)
                             }
                         }
+                        "Image" -> {
+                            // NEW: Parse Image child elements for clearLogo
+                            val imageType = parser.getAttributeValue(null, "type")
+                            val imageUrl = parser.getAttributeValue(null, "url")
+
+                            if (imageType == "clearLogo" && imageUrl != null) {
+                                clearLogoUrl = imageUrl
+                                Log.d(TAG, "Found clearLogo: $imageUrl")
+                            }
+                        }
                     }
                 } else if (eventType == XmlPullParser.END_TAG) {
                     if ((parser.name == "Video" || parser.name == "Directory") && currentItem != null) {
@@ -351,10 +364,16 @@ class PlexApiClient(private val authToken: String) {
                             Log.d(TAG, "  Main GUID: ${currentItem["guid"]}")
                             Log.d(TAG, "  Child GUIDs: $itemGuids")
                             Log.d(TAG, "  Selected GUID: $tmdbGuid")
+                            Log.d(TAG, "  clearLogo: $clearLogoUrl")
                         }
 
                         val thumbUrl = thumb?.takeIf { it.isNotEmpty() }?.let { buildImageUrl(serverUri, it, token) }
                         val artUrl = art?.takeIf { it.isNotEmpty() }?.let { buildImageUrl(serverUri, it, token) }
+
+                        // Use Plex clearLogo if available, otherwise will fetch from TMDB later
+                        val titleCardUrl = clearLogoUrl?.takeIf { it.isNotEmpty() }?.let {
+                            buildImageUrl(serverUri, it, token)
+                        }
 
                         if (thumbUrl != null || artUrl != null) {
                             items.add(
@@ -362,7 +381,7 @@ class PlexApiClient(private val authToken: String) {
                                     title = title,
                                     thumbUrl = thumbUrl,
                                     artUrl = artUrl,
-                                    titleCardUrl = null, // Will be fetched from TMDB
+                                    titleCardUrl = titleCardUrl, // Use Plex clearLogo!
                                     rating = rating,
                                     year = year,
                                     type = type,
@@ -374,6 +393,7 @@ class PlexApiClient(private val authToken: String) {
 
                         currentItem = null
                         itemGuids.clear()
+                        clearLogoUrl = null
                     }
                 }
                 eventType = parser.next()

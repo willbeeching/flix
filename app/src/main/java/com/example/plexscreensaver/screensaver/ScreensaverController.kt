@@ -3,8 +3,11 @@ package com.example.plexscreensaver.screensaver
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
@@ -31,6 +34,7 @@ class ScreensaverController(
     private val scope: CoroutineScope,
     private val imageView: ImageView,
     private val imageViewAlternate: ImageView,
+    private val imageViewBlurred: ImageView? = null,
     private val titleLogoView: ImageView,
     private val gradientLeft: View? = null,
     private val gradientRight: View? = null
@@ -63,6 +67,25 @@ class ScreensaverController(
         imageView.adjustViewBounds = false
         imageViewAlternate.scaleType = ImageView.ScaleType.CENTER_CROP
         imageViewAlternate.adjustViewBounds = false
+
+        // Configure blurred background layer
+        imageViewBlurred?.let {
+            it.scaleType = ImageView.ScaleType.CENTER_CROP
+            it.adjustViewBounds = false
+
+            // Apply blur effect on Android 12+ (GPU accelerated)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                it.setRenderEffect(
+                    RenderEffect.createBlurEffect(
+                        25f, 25f, // Blur radius in pixels
+                        Shader.TileMode.CLAMP
+                    )
+                )
+                Log.d(TAG, "Blur effect enabled (Android 12+)")
+            } else {
+                Log.d(TAG, "Blur effect not supported (Android < 12), using gradient only")
+            }
+        }
     }
 
     /**
@@ -244,15 +267,14 @@ class ScreensaverController(
 
         Log.d(TAG, "Showing image #$currentIndex: ${item.title}")
 
-        // Fetch TMDB backdrop and logo on-demand for best quality
-        // Skip items without logos
-        if (item.guid != null && item.titleCardUrl == null) {
+        // If item doesn't have a clearLogo from Plex, try to fetch from TMDB
+        if (item.titleCardUrl == null && item.guid != null) {
             scope.launch(Dispatchers.IO) {
-                val (backdropUrl, logoUrl) = tmdbClient.getImagesFromGuid(item.guid, item.type)
+                val (tmdbBackdropUrl, tmdbLogoUrl) = tmdbClient.getImagesFromGuid(item.guid, item.type)
 
-                // Skip if no logo found
-                if (logoUrl == null) {
-                    Log.d(TAG, "✗ Skipping ${item.title} - no logo, moving to next")
+                // Skip if no logo found from either source
+                if (tmdbLogoUrl == null) {
+                    Log.d(TAG, "✗ Skipping ${item.title} - no logo from Plex or TMDB, moving to next")
                     withContext(Dispatchers.Main) {
                         currentIndex = (currentIndex + 1) % artworkItems.size
                         showNextImage() // Recursively show next
@@ -261,8 +283,9 @@ class ScreensaverController(
                 }
 
                 withContext(Dispatchers.Main) {
-                    // Use TMDB backdrop if available, otherwise fall back to Plex artwork
-                    val imageUrl = backdropUrl ?: (item.artUrl ?: item.thumbUrl)
+                    // PRIORITY: Use Plex artwork if available, fallback to TMDB
+                    // Plex backdrops are curated to be clean (no promotional text)
+                    val imageUrl = item.artUrl ?: tmdbBackdropUrl ?: item.thumbUrl
 
                     // Load if we have a URL and it's different from current (or this is the first image)
                     if (imageUrl != null) {
@@ -285,10 +308,10 @@ class ScreensaverController(
                         }
                     }
 
-                    // Show logo (we know it exists)
+                    // Show logo (TMDB fallback since Plex didn't have one)
                     when {
-                        logoUrl != null && logoUrl != currentLogoUrl -> {
-                            Log.d(TAG, "✓ Found TMDB images for ${item.title}")
+                        tmdbLogoUrl != null && tmdbLogoUrl != currentLogoUrl -> {
+                            Log.d(TAG, "✓ Using TMDB logo for ${item.title} (Plex backdrop: ${item.artUrl != null})")
 
                             // Fade out old logo first if visible
                             if (titleLogoView.alpha > 0f) {
@@ -297,9 +320,9 @@ class ScreensaverController(
                                     .setDuration(500)
                                     .withEndAction {
                                         // After fade out, load new logo
-                                        currentLogoUrl = logoUrl
+                                        currentLogoUrl = tmdbLogoUrl
                                         titleLogoView.visibility = View.INVISIBLE
-                                        titleLogoView.load(logoUrl) {
+                                        titleLogoView.load(tmdbLogoUrl) {
                                             crossfade(false)
                                             listener(
                                                 onSuccess = { _, result ->
@@ -322,9 +345,9 @@ class ScreensaverController(
                                     .start()
                             } else {
                                 // No logo currently showing, load directly
-                                currentLogoUrl = logoUrl
+                                currentLogoUrl = tmdbLogoUrl
                                 titleLogoView.visibility = View.INVISIBLE
-                                titleLogoView.load(logoUrl) {
+                                titleLogoView.load(tmdbLogoUrl) {
                                     crossfade(false)
                                     listener(
                                         onSuccess = { _, result ->
@@ -345,7 +368,7 @@ class ScreensaverController(
                                 }
                             }
                         }
-                        logoUrl == null -> {
+                        tmdbLogoUrl == null -> {
                             // Fade out logo if visible
                             if (titleLogoView.alpha > 0f) {
                                 titleLogoView.animate()
@@ -365,17 +388,19 @@ class ScreensaverController(
                         }
                     }
 
-                    // Update the item so we don't fetch again
-                    if (logoUrl != null || backdropUrl != null) {
+                    // Update the item with TMDB data so we don't fetch again
+                    if (tmdbLogoUrl != null || tmdbBackdropUrl != null) {
                         artworkItems[currentIndex] = item.copy(
-                            titleCardUrl = logoUrl,
-                            artUrl = backdropUrl ?: item.artUrl
+                            titleCardUrl = tmdbLogoUrl,
+                            // Keep Plex artUrl if we have it, otherwise use TMDB backdrop
+                            artUrl = item.artUrl ?: tmdbBackdropUrl
                         )
                     }
                 }
             }
         } else {
-            // Already have cached URLs
+            // Already have clearLogo from Plex - use Plex artwork directly!
+            Log.d(TAG, "✓ Using Plex clearLogo for ${item.title}")
             val imageUrl = item.artUrl ?: item.thumbUrl
 
             // Load if we have a URL and it's different from current (or this is the first image)
@@ -456,6 +481,13 @@ class ScreensaverController(
 
         // IMPORTANT: Set target view to invisible BEFORE loading to prevent flash
         targetView.alpha = 0f
+
+        // Also load into blurred background layer (if available)
+        imageViewBlurred?.load(imageUrl) {
+            crossfade(false)
+            size(coil.size.Size.ORIGINAL)
+            scale(coil.size.Scale.FILL)
+        }
 
         // Load the new image into the target view (starts hidden)
         targetView.load(imageUrl) {
@@ -611,6 +643,7 @@ class ScreensaverController(
 
     /**
      * Adjust logo size for consistent visual weight across all aspect ratios
+     * Uses continuous scaling based on screen width percentage (like Plex mobile)
      */
     private fun adjustLogoSize(drawable: android.graphics.drawable.Drawable) {
         val intrinsicWidth = drawable.intrinsicWidth
@@ -622,59 +655,46 @@ class ScreensaverController(
 
         val aspectRatio = intrinsicWidth.toFloat() / intrinsicHeight.toFloat()
 
-        // Base target height and max dimensions
-        val maxWidthDp = 300f
-        val maxHeightDp = 90f
-        var targetHeightDp = 90f
+        // Get screen dimensions
+        val screenWidthDp = context.resources.configuration.screenWidthDp.toFloat()
+        val screenHeightDp = context.resources.configuration.screenHeightDp.toFloat()
 
-        // Smart sizing based on aspect ratio
-        val (widthDp, heightDp) = when {
-            aspectRatio > 10f -> { // Super wide (e.g., 12:1)
-                targetHeightDp = 35f
-                val width = (targetHeightDp * aspectRatio).coerceAtMost(maxWidthDp)
-                width to (width / aspectRatio)
-            }
-            aspectRatio > 6f -> { // Very wide (e.g., 8:1)
-                targetHeightDp = 45f
-                val width = (targetHeightDp * aspectRatio).coerceAtMost(maxWidthDp)
-                width to (width / aspectRatio)
-            }
-            aspectRatio > 4f -> { // Wide (e.g., 5:1)
-                targetHeightDp = 55f
-                val width = (targetHeightDp * aspectRatio).coerceAtMost(maxWidthDp)
-                width to (width / aspectRatio)
-            }
-            aspectRatio > 2.5f -> { // Balanced wide (e.g., 3:1)
-                targetHeightDp = 70f
-                val width = (targetHeightDp * aspectRatio).coerceAtMost(maxWidthDp)
-                width to (width / aspectRatio)
-            }
-            aspectRatio > 1.5f -> { // Slightly wide (e.g., 2:1)
-                targetHeightDp = 80f
-                val width = (targetHeightDp * aspectRatio).coerceAtMost(maxWidthDp)
-                width to (width / aspectRatio)
-            }
-            aspectRatio > 0.8f -> { // Square-ish (e.g., 1:1)
-                targetHeightDp = maxHeightDp
-                maxHeightDp to maxHeightDp
-            }
-            else -> { // Tall (e.g., 1:2)
-                targetHeightDp = maxHeightDp
-                val width = targetHeightDp * aspectRatio
-                width to targetHeightDp
-            }
+        // Target a percentage of screen width based on aspect ratio
+        // This creates smooth, continuous sizing instead of discrete jumps
+        val targetWidthPercentage = when {
+            aspectRatio > 8f -> 0.18f  // Very wide logos (e.g., 12:1) can be bigger
+            aspectRatio > 4f -> 0.16f  // Wide logos (e.g., 5:1 clearLogos)
+            aspectRatio > 2f -> 0.14f  // Medium logos (e.g., 3:1)
+            else -> 0.12f              // Square-ish logos (e.g., 1:1)
+        }
+
+        val targetWidthDp = screenWidthDp * targetWidthPercentage
+        val targetHeightDp = targetWidthDp / aspectRatio
+
+        // Clamp to reasonable bounds
+        val maxWidthDp = screenWidthDp * 0.25f  // Never more than 25% of screen
+        val maxHeightDp = screenHeightDp * 0.15f // Never more than 15% of screen height
+        val minHeightDp = 40f // Ensure readability
+
+        val finalHeightDp = targetHeightDp.coerceIn(minHeightDp, maxHeightDp)
+
+        // If height was clamped, recalculate width to maintain aspect ratio
+        val finalWidthDp = if (finalHeightDp != targetHeightDp) {
+            (finalHeightDp * aspectRatio).coerceAtMost(maxWidthDp)
+        } else {
+            targetWidthDp.coerceAtMost(maxWidthDp)
         }
 
         val density = context.resources.displayMetrics.density
-        val widthPx = (widthDp * density).toInt()
-        val heightPx = (heightDp * density).toInt()
+        val widthPx = (finalWidthDp * density).toInt()
+        val heightPx = (finalHeightDp * density).toInt()
 
         val layoutParams = titleLogoView.layoutParams
         layoutParams.width = widthPx
         layoutParams.height = heightPx
         titleLogoView.layoutParams = layoutParams
 
-        Log.d(TAG, "Logo: ${intrinsicWidth}x${intrinsicHeight} (${String.format("%.2f", aspectRatio)}:1) → ${widthDp.toInt()}x${heightDp.toInt()}dp")
+        Log.d(TAG, "Logo: ${intrinsicWidth}x${intrinsicHeight} (${String.format("%.2f", aspectRatio)}:1) → ${finalWidthDp.toInt()}x${finalHeightDp.toInt()}dp (screen: ${screenWidthDp.toInt()}x${screenHeightDp.toInt()}dp)")
     }
 }
 

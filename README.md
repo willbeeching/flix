@@ -5,10 +5,15 @@ An Android screensaver app that displays beautiful artwork from your Plex Media 
 ## Features
 
 - 🔐 **Plex Link Authentication** - Secure OAuth device linking, no manual server configuration needed
-- 🎨 **Automatic Artwork Display** - Shows movie posters and backdrops from your Plex library
+- 🎨 **High-Quality Artwork** - Shows 4K transparent logos and curated backdrops from your Plex library
 - 📺 **Android TV Optimized** - Designed for the big screen with fullscreen display
-- 🔄 **Smooth Transitions** - Beautiful crossfade effects between images
+- 🔄 **Smooth Transitions** - Beautiful crossfade effects with Ken Burns pan animation
+- 🌈 **Dynamic Color Gradients** - Automatically extracts colors from artwork for ambient lighting effects
+- ✨ **Blur Background Layer** - Subtle depth effect on Android 12+ (GPU-accelerated)
+- 🎬 **Smart Logo Sizing** - Intelligently sizes logos based on aspect ratio for consistent visual weight
+- 🖼️ **Curated Backgrounds** - Prioritizes Plex's clean backdrops over promotional images
 - ⚡ **Auto-Discovery** - Automatically finds and connects to your Plex servers
+- 📚 **Library Selection** - Choose specific libraries to display
 - 📱 **Mobile Support** - Works on Android phones and tablets too
 
 ## Requirements
@@ -57,9 +62,11 @@ An Android screensaver app that displays beautiful artwork from your Plex Media 
 ### Artwork Loading
 
 1. Discovers available Plex servers using the auth token
-2. Fetches library sections (movies and TV shows)
-3. Retrieves artwork URLs for available media
-4. Displays artwork in rotation with crossfade transitions
+2. Fetches library sections (movies and TV shows) with high-quality metadata
+3. Extracts Plex clearLogos (4K transparent PNGs) from Image elements
+4. Uses curated Plex backdrops, falling back to TMDB for maximum quality
+5. Applies dynamic color extraction for gradient overlays
+6. Displays artwork in rotation with smooth crossfade and Ken Burns effects
 
 ## Technical Details
 
@@ -72,6 +79,8 @@ An Android screensaver app that displays beautiful artwork from your Plex Media 
 - **JSON Parsing**: Moshi
 - **XML Parsing**: Android XmlPullParser
 - **Async**: Kotlin Coroutines
+- **Color Extraction**: AndroidX Palette
+- **Visual Effects**: RenderEffect (Android 12+)
 
 ### Architecture
 
@@ -79,12 +88,18 @@ An Android screensaver app that displays beautiful artwork from your Plex Media 
 app/
 ├── plex/
 │   ├── PlexAuthManager.kt      # Handles Plex Link OAuth flow
-│   └── PlexApiClient.kt         # Plex API interactions
+│   ├── PlexApiClient.kt         # Plex API interactions (with clearLogo support)
+│   └── TmdbClient.kt            # TMDB fallback for logos/backdrops
+├── screensaver/
+│   └── ScreensaverController.kt # Shared screensaver logic with effects
 ├── service/
 │   └── PlexScreensaverService.kt # DreamService implementation
 └── ui/
     ├── MainActivity.kt          # Landing screen
     ├── SettingsActivity.kt      # Authentication UI
+    ├── ServerSelectionActivity.kt # Choose Plex server
+    ├── LibrarySelectionActivity.kt # Choose libraries
+    ├── PreviewActivity.kt       # Test screensaver
     └── theme/                   # Material 3 theme
 ```
 
@@ -99,22 +114,35 @@ app/
 - **PlexApiClient**: Interacts with Plex Media Server API
 
   - Discovers available servers
-  - Fetches library sections
-  - Retrieves artwork metadata
+  - Fetches library sections with Image elements
+  - Extracts clearLogo URLs (4K transparent PNGs)
+  - Retrieves high-quality artwork metadata
 
-- **PlexScreensaverService**: DreamService that displays artwork
-  - Loads artwork on start
-  - Rotates images every 5 seconds
-  - Applies smooth crossfade transitions
+- **TmdbClient**: Fetches supplementary artwork from TMDB
+
+  - Gets high-resolution backdrops (up to 4K)
+  - Retrieves title logos when Plex doesn't have them
+  - Filters for clean images (high vote_average)
+  - Caches responses to minimize API calls
+
+- **ScreensaverController**: Manages screensaver display and effects
+  - Loads artwork with smart prioritization (Plex first, TMDB fallback)
+  - Rotates images every 10 seconds with 2-second crossfade
+  - Extracts colors using Palette API for dynamic gradients
+  - Applies Ken Burns pan effect for subtle motion
+  - Intelligently sizes logos based on aspect ratio
+  - Manages blur layer on Android 12+ devices
 
 ## Customization
 
 You can customize various aspects by modifying the constants in the source code:
 
-- **Rotation Interval**: Change `ROTATION_INTERVAL_MS` in `PlexScreensaverService.kt`
-- **Crossfade Duration**: Adjust `CROSSFADE_DURATION_MS` in `PlexScreensaverService.kt`
-- **Image Limit**: Modify `limit` parameter in `getArtworkFromSection()` calls
-- **Library Types**: Filter different library types in the `loadArtwork()` method
+- **Rotation Interval**: Change `ROTATION_INTERVAL_MS` in `ScreensaverController.kt` (default: 10 seconds)
+- **Crossfade Duration**: Adjust `CROSSFADE_DURATION_MS` in `ScreensaverController.kt` (default: 2 seconds)
+- **Blur Intensity**: Modify blur radius in `init{}` block (default: 25px)
+- **Logo Sizing**: Adjust percentage values in `adjustLogoSize()` (default: 12-18% of screen width)
+- **Image Batch Size**: Modify `batchSize` parameter in `getArtworkFromSection()` (default: 300 items)
+- **Library Selection**: Use the app UI to select specific libraries to display
 
 ## Privacy & Security
 
@@ -144,16 +172,25 @@ You can customize various aspects by modifying the constants in the source code:
 2. Images are cached after first load
 3. Consider your network speed and Plex server location
 
+## Recent Improvements
+
+- [x] Plex clearLogo support (4K transparent PNGs)
+- [x] Blur background layer (Android 12+)
+- [x] Smart logo sizing algorithm
+- [x] Ken Burns pan effect
+- [x] Library selection UI
+- [x] Server selection UI
+- [x] Dynamic color-extracted gradients
+- [x] Prioritize curated Plex backgrounds
+
 ## Future Enhancements
 
-- [ ] Allow users to select specific libraries to display
-- [ ] Add movie/show titles overlay
-- [ ] Blur effect transitions (Netflix-style)
+- [ ] Add movie/show titles overlay (optional)
 - [ ] TV remote control integration (pause/skip)
 - [ ] Display recently watched content
 - [ ] Show currently playing media
-- [ ] Customizable rotation speed
-- [ ] Ken Burns effect (pan & zoom)
+- [ ] Customizable rotation speed (UI setting)
+- [ ] Photo library support
 
 ## Contributing
 

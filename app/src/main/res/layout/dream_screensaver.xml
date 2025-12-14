@@ -5,6 +5,16 @@
     android:fitsSystemWindows="false"
     android:background="@android:color/black">
 
+    <!-- Blurred background layer (for depth effect) -->
+    <ImageView
+        android:id="@+id/screensaver_image_blurred"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:adjustViewBounds="false"
+        android:alpha="0.3"
+        android:contentDescription="@string/screensaver_image_description" />
+
     <!-- Primary image view -->
     <ImageView
         android:id="@+id/screensaver_image"
