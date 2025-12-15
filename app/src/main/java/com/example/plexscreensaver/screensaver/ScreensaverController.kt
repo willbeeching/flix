@@ -3,11 +3,8 @@ package com.example.plexscreensaver.screensaver
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
@@ -15,6 +12,7 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.palette.graphics.Palette
 import coil.load
 import com.example.plexscreensaver.R
+import com.example.plexscreensaver.plex.FanartTvClient
 import com.example.plexscreensaver.plex.PlexApiClient
 import com.example.plexscreensaver.plex.PlexAuthManager
 import com.example.plexscreensaver.plex.TmdbClient
@@ -34,13 +32,13 @@ class ScreensaverController(
     private val scope: CoroutineScope,
     private val imageView: ImageView,
     private val imageViewAlternate: ImageView,
-    private val imageViewBlurred: ImageView? = null,
     private val titleLogoView: ImageView,
     private val gradientLeft: View? = null,
     private val gradientRight: View? = null
 ) {
     private val authManager = PlexAuthManager(context)
     private val tmdbClient = TmdbClient()
+    private val fanartClient = FanartTvClient()
     private var rotationJob: Job? = null
     private val artworkItems = mutableListOf<PlexApiClient.ArtworkItem>()
     private var currentIndex = 0
@@ -49,16 +47,19 @@ class ScreensaverController(
     private var useAlternateView = false
     private var isFirstImage = true
 
-    // Track current gradient colors for smooth transitions
-    private var currentGradientColor: Int = 0xFF000000.toInt()
-    private var gradientAnimator: ValueAnimator? = null
+    // Track current gradient colors for smooth transitions (separate for each corner)
+    private var currentLeftGradientColor: Int = 0xFF000000.toInt()
+    private var currentRightGradientColor: Int = 0xFF000000.toInt()
+    private var leftGradientAnimator: ValueAnimator? = null
+    private var rightGradientAnimator: ValueAnimator? = null
 
     companion object {
         private const val TAG = "ScreensaverController"
         private const val ROTATION_INTERVAL_MS = 10000L // 10 seconds total per slide
-        private const val CROSSFADE_DURATION_MS = 2000 // 2 seconds for smoother transitions
-        private const val LOGO_FADEOUT_DURATION_MS = 500L // Duration of logo fade out
-        private const val LOGO_FADEOUT_BEFORE_TRANSITION_MS = 2000L // Start fading 2s before image crossfade
+        private const val CROSSFADE_DURATION_MS = 2000L // 2 seconds for backdrop transitions
+        private const val LOGO_FADE_IN_DELAY_MS = 500L // Delay after backdrop before logo appears
+        private const val LOGO_FADE_DURATION_MS = 1000L // Logo fade in/out duration
+        private const val LOGO_DISPLAY_TIME_MS = 15000L // How long logo stays visible
     }
 
     init {
@@ -67,25 +68,6 @@ class ScreensaverController(
         imageView.adjustViewBounds = false
         imageViewAlternate.scaleType = ImageView.ScaleType.CENTER_CROP
         imageViewAlternate.adjustViewBounds = false
-
-        // Configure blurred background layer
-        imageViewBlurred?.let {
-            it.scaleType = ImageView.ScaleType.CENTER_CROP
-            it.adjustViewBounds = false
-
-            // Apply blur effect on Android 12+ (GPU accelerated)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                it.setRenderEffect(
-                    RenderEffect.createBlurEffect(
-                        25f, 25f, // Blur radius in pixels
-                        Shader.TileMode.CLAMP
-                    )
-                )
-                Log.d(TAG, "Blur effect enabled (Android 12+)")
-            } else {
-                Log.d(TAG, "Blur effect not supported (Android < 12), using gradient only")
-            }
-        }
     }
 
     /**
@@ -101,8 +83,10 @@ class ScreensaverController(
     fun stop() {
         rotationJob?.cancel()
         rotationJob = null
-        gradientAnimator?.cancel()
-        gradientAnimator = null
+        leftGradientAnimator?.cancel()
+        leftGradientAnimator = null
+        rightGradientAnimator?.cancel()
+        rightGradientAnimator = null
     }
 
     /**
@@ -244,9 +228,19 @@ class ScreensaverController(
             showNextImage()
 
             while (isActive) {
-                // Wait for the full rotation interval
-                delay(ROTATION_INTERVAL_MS)
-                // Show next image (logo fade-out will happen inside)
+                // Wait for logo display time
+                delay(LOGO_DISPLAY_TIME_MS)
+
+                // Fade out logo before backdrop transition
+                if (titleLogoView.alpha > 0f) {
+                    titleLogoView.animate()
+                        .alpha(0f)
+                        .setDuration(LOGO_FADE_DURATION_MS)
+                        .start()
+                    delay(LOGO_FADE_DURATION_MS)
+                }
+
+                // Now transition to next image
                 showNextImage()
             }
         }
@@ -263,205 +257,83 @@ class ScreensaverController(
             return
         }
 
-        val item = artworkItems[currentIndex]
+        // Capture index before any async operations
+        val itemIndex = currentIndex
+        val item = artworkItems[itemIndex]
 
-        Log.d(TAG, "Showing image #$currentIndex: ${item.title}")
+        // Increment index for next call BEFORE any async work
+        currentIndex = (currentIndex + 1) % artworkItems.size
 
-        // If item doesn't have a clearLogo from Plex, try to fetch from TMDB
-        if (item.titleCardUrl == null && item.guid != null) {
+        Log.d(TAG, "Showing image #$itemIndex: ${item.title}")
+
+        // Fetch artwork from external sources
+        if (item.guid != null) {
             scope.launch(Dispatchers.IO) {
+                // Try Fanart.tv first for both backdrop and logo
+                val (fanartBackdropUrl, fanartLogoUrl) = fanartClient.getImagesFromGuid(item.guid, item.type)
+
+                // Then try TMDB for backdrop and logo
                 val (tmdbBackdropUrl, tmdbLogoUrl) = tmdbClient.getImagesFromGuid(item.guid, item.type)
 
-                // Skip if no logo found from either source
-                if (tmdbLogoUrl == null) {
-                    Log.d(TAG, "✗ Skipping ${item.title} - no logo from Plex or TMDB, moving to next")
+                // Logo priority: Plex first, then Fanart.tv, then TMDB
+                val logoUrl = item.titleCardUrl ?: fanartLogoUrl ?: tmdbLogoUrl
+
+                // Skip if no logo found from any source
+                if (logoUrl == null) {
+                    Log.d(TAG, "✗ Skipping ${item.title} - no logo from Plex, Fanart.tv, or TMDB")
                     withContext(Dispatchers.Main) {
-                        currentIndex = (currentIndex + 1) % artworkItems.size
-                        showNextImage() // Recursively show next
+                        showNextImage() // Show next (index already incremented)
                     }
                     return@launch
                 }
 
                 withContext(Dispatchers.Main) {
-                    // PRIORITY: Use Plex artwork if available, fallback to TMDB
-                    // Plex backdrops are curated to be clean (no promotional text)
-                    val imageUrl = item.artUrl ?: tmdbBackdropUrl ?: item.thumbUrl
+                    // Backdrop priority: Fanart.tv first (curated, text-free), then Plex, then TMDB
+                    val imageUrl = fanartBackdropUrl ?: item.artUrl ?: tmdbBackdropUrl ?: item.thumbUrl
 
-                    // Load if we have a URL and it's different from current (or this is the first image)
+                    val backdropSource = when {
+                        fanartBackdropUrl != null -> "Fanart.tv"
+                        item.artUrl != null -> "Plex"
+                        tmdbBackdropUrl != null -> "TMDB"
+                        else -> "thumb"
+                    }
+                    val logoSource = when {
+                        item.titleCardUrl != null -> "Plex"
+                        fanartLogoUrl != null -> "Fanart.tv"
+                        else -> "TMDB"
+                    }
+                    Log.d(TAG, "Using backdrop: $backdropSource, logo: $logoSource")
+
                     if (imageUrl != null) {
-                        if (imageUrl != currentBackdropUrl || currentBackdropUrl == null) {
-                            Log.d(TAG, "Loading backdrop for ${item.title}")
-
-                            // Fade out logo first if not the first image
-                            if (!isFirstImage && titleLogoView.alpha > 0f) {
-                                Log.d(TAG, "Fading out logo before transition")
-                                titleLogoView.animate()
-                                    .alpha(0f)
-                                    .setDuration(LOGO_FADEOUT_DURATION_MS)
-                                    .start()
-                                // Wait for fade out, then wait 2 more seconds
-                                delay(LOGO_FADEOUT_DURATION_MS + LOGO_FADEOUT_BEFORE_TRANSITION_MS)
-                            }
-
-                            currentBackdropUrl = imageUrl
-                            loadImageWithCrossfade(imageUrl)
-                        }
+                        currentBackdropUrl = imageUrl
+                        loadImageWithCrossfadeAndLogo(imageUrl, logoUrl)
                     }
 
-                    // Show logo (TMDB fallback since Plex didn't have one)
-                    when {
-                        tmdbLogoUrl != null && tmdbLogoUrl != currentLogoUrl -> {
-                            Log.d(TAG, "✓ Using TMDB logo for ${item.title} (Plex backdrop: ${item.artUrl != null})")
-
-                            // Fade out old logo first if visible
-                            if (titleLogoView.alpha > 0f) {
-                                titleLogoView.animate()
-                                    .alpha(0f)
-                                    .setDuration(500)
-                                    .withEndAction {
-                                        // After fade out, load new logo
-                                        currentLogoUrl = tmdbLogoUrl
-                                        titleLogoView.visibility = View.INVISIBLE
-                                        titleLogoView.load(tmdbLogoUrl) {
-                                            crossfade(false)
-                                            listener(
-                                                onSuccess = { _, result ->
-                                                    adjustLogoSize(result.drawable)
-                                                    titleLogoView.alpha = 0f
-                                                    titleLogoView.visibility = View.VISIBLE
-                                                    titleLogoView.animate()
-                                                        .alpha(1f)
-                                                        .setDuration(CROSSFADE_DURATION_MS.toLong())
-                                                        .setStartDelay(1000)
-                                                        .start()
-                                                },
-                                                onError = { _, _ ->
-                                                    titleLogoView.visibility = View.GONE
-                                                    currentLogoUrl = null
-                                                }
-                                            )
-                                        }
-                                    }
-                                    .start()
-                            } else {
-                                // No logo currently showing, load directly
-                                currentLogoUrl = tmdbLogoUrl
-                                titleLogoView.visibility = View.INVISIBLE
-                                titleLogoView.load(tmdbLogoUrl) {
-                                    crossfade(false)
-                                    listener(
-                                        onSuccess = { _, result ->
-                                            adjustLogoSize(result.drawable)
-                                            titleLogoView.alpha = 0f
-                                            titleLogoView.visibility = View.VISIBLE
-                                            titleLogoView.animate()
-                                                .alpha(1f)
-                                                .setDuration(CROSSFADE_DURATION_MS.toLong())
-                                                .setStartDelay(1000)
-                                                .start()
-                                        },
-                                        onError = { _, _ ->
-                                            titleLogoView.visibility = View.GONE
-                                            currentLogoUrl = null
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                        tmdbLogoUrl == null -> {
-                            // Fade out logo if visible
-                            if (titleLogoView.alpha > 0f) {
-                                titleLogoView.animate()
-                                    .alpha(0f)
-                                    .setDuration(500)
-                                    .withEndAction {
-                                        titleLogoView.visibility = View.GONE
-                                    }
-                                    .start()
-                            } else {
-                                titleLogoView.visibility = View.GONE
-                            }
-                            currentLogoUrl = null
-                        }
-                        else -> {
-                            // Logo hasn't changed, keep current logo visible
-                        }
-                    }
-
-                    // Update the item with TMDB data so we don't fetch again
-                    if (tmdbLogoUrl != null || tmdbBackdropUrl != null) {
-                        artworkItems[currentIndex] = item.copy(
-                            titleCardUrl = tmdbLogoUrl,
-                            // Keep Plex artUrl if we have it, otherwise use TMDB backdrop
-                            artUrl = item.artUrl ?: tmdbBackdropUrl
-                        )
-                    }
+                    // Update the item with resolved data so we don't fetch again
+                    artworkItems[itemIndex] = item.copy(
+                        titleCardUrl = logoUrl,
+                        artUrl = fanartBackdropUrl ?: tmdbBackdropUrl ?: item.artUrl
+                    )
                 }
             }
         } else {
-            // Already have clearLogo from Plex - use Plex artwork directly!
-            Log.d(TAG, "✓ Using Plex clearLogo for ${item.title}")
+            // No GUID - use Plex data directly
+            Log.d(TAG, "✓ No GUID for ${item.title}, using Plex data")
             val imageUrl = item.artUrl ?: item.thumbUrl
+            val logoUrl = item.titleCardUrl
 
-            // Load if we have a URL and it's different from current (or this is the first image)
-            if (imageUrl != null) {
-                if (imageUrl != currentBackdropUrl || currentBackdropUrl == null) {
-                    // Fade out logo first if not the first image
-                    scope.launch {
-                        if (!isFirstImage && titleLogoView.alpha > 0f) {
-                            Log.d(TAG, "Fading out logo before transition")
-                            titleLogoView.animate()
-                                .alpha(0f)
-                                .setDuration(LOGO_FADEOUT_DURATION_MS)
-                                .start()
-                            // Wait for fade out, then wait 2 more seconds
-                            delay(LOGO_FADEOUT_DURATION_MS + LOGO_FADEOUT_BEFORE_TRANSITION_MS)
-                        }
-
-                        currentBackdropUrl = imageUrl
-                        loadImageWithCrossfade(imageUrl)
-                    }
-                }
+            // Skip if no logo
+            if (logoUrl == null) {
+                Log.d(TAG, "✗ Skipping ${item.title} - no logo available")
+                showNextImage() // Index already incremented
+                return
             }
 
-            when {
-                item.titleCardUrl != null && item.titleCardUrl != currentLogoUrl -> {
-                    currentLogoUrl = item.titleCardUrl
-                    // Keep hidden until sized properly
-                    titleLogoView.visibility = View.INVISIBLE
-                    titleLogoView.load(item.titleCardUrl) {
-                        crossfade(false)  // We'll handle the fade ourselves
-                        listener(
-                            onSuccess = { _, result ->
-                                // Adjust logo size based on aspect ratio for consistent visual weight
-                                adjustLogoSize(result.drawable)
-                                // Now show it with proper size - fade in after 1 second delay
-                                titleLogoView.alpha = 0f
-                                titleLogoView.visibility = View.VISIBLE
-                                titleLogoView.animate()
-                                    .alpha(1f)
-                                    .setDuration(CROSSFADE_DURATION_MS.toLong())
-                                    .setStartDelay(1000) // 1 second delay for sequential reveal
-                                    .start()
-                            },
-                            onError = { _, _ ->
-                                titleLogoView.visibility = View.GONE
-                                currentLogoUrl = null
-                            }
-                        )
-                    }
-                }
-                item.titleCardUrl == null -> {
-                    titleLogoView.visibility = View.GONE
-                    currentLogoUrl = null
-                }
-                else -> {
-                    // Logo hasn't changed, keep current logo visible
-                }
+            if (imageUrl != null) {
+                currentBackdropUrl = imageUrl
+                loadImageWithCrossfadeAndLogo(imageUrl, logoUrl)
             }
         }
-
-        currentIndex = (currentIndex + 1) % artworkItems.size
     }
 
     /**
@@ -469,6 +341,16 @@ class ScreensaverController(
      * This prevents the black flash that occurs when using a single ImageView
      */
     private fun loadImageWithCrossfade(imageUrl: String) {
+        loadImageWithCrossfadeAndLogo(imageUrl, null)
+    }
+
+    /**
+     * Load backdrop and logo in sequence:
+     * 1. Backdrop crossfades in
+     * 2. Delay
+     * 3. Logo fades in
+     */
+    private fun loadImageWithCrossfadeAndLogo(imageUrl: String, logoUrl: String?) {
         // Determine which view to load into (alternate between them)
         val targetView = if (useAlternateView) imageViewAlternate else imageView
         val currentView = if (useAlternateView) imageView else imageViewAlternate
@@ -482,13 +364,6 @@ class ScreensaverController(
         // IMPORTANT: Set target view to invisible BEFORE loading to prevent flash
         targetView.alpha = 0f
 
-        // Also load into blurred background layer (if available)
-        imageViewBlurred?.load(imageUrl) {
-            crossfade(false)
-            size(coil.size.Size.ORIGINAL)
-            scale(coil.size.Scale.FILL)
-        }
-
         // Load the new image into the target view (starts hidden)
         targetView.load(imageUrl) {
             crossfade(false)  // We'll handle the fade manually
@@ -499,7 +374,7 @@ class ScreensaverController(
                 onSuccess = { _, _ ->
                     Log.d(TAG, "✓ Backdrop loaded successfully into $targetViewName view")
 
-                    // Extract color from image and update gradients
+                    // Extract colors from image and update gradients
                     updateGradientsWithImageColor(targetView)
 
                     // For first image, show immediately without animation
@@ -509,9 +384,13 @@ class ScreensaverController(
                         targetView.alpha = 1f
                         targetView.visibility = View.VISIBLE
                         applyKenBurnsEffect(targetView)
+                        // Load logo after delay
+                        if (logoUrl != null) {
+                            loadLogoWithDelay(logoUrl, LOGO_FADE_IN_DELAY_MS)
+                        }
                     } else {
-                        // For subsequent images, use crossfade animation
-                        Log.d(TAG, "Crossfading - target: ${targetView.alpha} -> 1.0, current: ${currentView.alpha} -> 0.0")
+                        // Crossfade animation for backdrop
+                        Log.d(TAG, "Crossfading backdrop")
 
                         // Apply Ken Burns effect before starting fade
                         applyKenBurnsEffect(targetView)
@@ -519,15 +398,19 @@ class ScreensaverController(
                         // Animate both views
                         targetView.animate()
                             .alpha(1f)
-                            .setDuration(CROSSFADE_DURATION_MS.toLong())
+                            .setDuration(CROSSFADE_DURATION_MS)
                             .withEndAction {
-                                Log.d(TAG, "Fade complete - target now at: ${targetView.alpha}")
+                                Log.d(TAG, "Backdrop fade complete")
+                                // Now load logo after delay
+                                if (logoUrl != null) {
+                                    loadLogoWithDelay(logoUrl, LOGO_FADE_IN_DELAY_MS)
+                                }
                             }
                             .start()
 
                         currentView.animate()
                             .alpha(0f)
-                            .setDuration(CROSSFADE_DURATION_MS.toLong())
+                            .setDuration(CROSSFADE_DURATION_MS)
                             .start()
                     }
                 },
@@ -539,72 +422,33 @@ class ScreensaverController(
     }
 
     /**
-     * Extract dominant dark color from image and apply to gradients
+     * Load and show logo after a delay
      */
-    private fun updateGradientsWithImageColor(targetView: ImageView) {
-        val drawable = targetView.drawable ?: return
+    private fun loadLogoWithDelay(logoUrl: String, delayMs: Long) {
+        currentLogoUrl = logoUrl
+        titleLogoView.visibility = View.INVISIBLE
+        titleLogoView.alpha = 0f
 
-        scope.launch(Dispatchers.Default) {
-            try {
-                val bitmap = drawable.toBitmap(width = 200, height = 200) // Smaller for performance
-                val palette = Palette.from(bitmap).generate()
-
-                // Get dark muted color, fallback to dark vibrant, then black
-                val dominantColor = palette.darkMutedSwatch?.rgb
-                    ?: palette.darkVibrantSwatch?.rgb
-                    ?: palette.mutedSwatch?.rgb
-                    ?: 0xFF000000.toInt()
-
-                withContext(Dispatchers.Main) {
-                    updateGradientColor(dominantColor)
+        titleLogoView.load(logoUrl) {
+            crossfade(false)
+            listener(
+                onSuccess = { _, result ->
+                    adjustLogoSize(result.drawable)
+                    titleLogoView.visibility = View.VISIBLE
+                    // Fade in after delay
+                    titleLogoView.animate()
+                        .alpha(1f)
+                        .setDuration(LOGO_FADE_DURATION_MS)
+                        .setStartDelay(delayMs)
+                        .start()
+                    Log.d(TAG, "Logo fading in after ${delayMs}ms delay")
+                },
+                onError = { _, _ ->
+                    titleLogoView.visibility = View.GONE
+                    currentLogoUrl = null
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error extracting palette color", e)
-            }
+            )
         }
-    }
-
-    /**
-     * Update gradient views with extracted color
-     * Animates smoothly from current color to new color
-     */
-    private fun updateGradientColor(baseColor: Int) {
-        // Cancel any existing animation
-        gradientAnimator?.cancel()
-
-        // Animate from current color to new color
-        gradientAnimator = ValueAnimator.ofObject(ArgbEvaluator(), currentGradientColor, baseColor).apply {
-            duration = CROSSFADE_DURATION_MS.toLong() // Match image crossfade duration
-
-            addUpdateListener { animator ->
-                val animatedColor = animator.animatedValue as Int
-
-                val startColor = (animatedColor and 0x00FFFFFF) or 0xCC000000.toInt() // 80% opacity
-                val centerColor = (animatedColor and 0x00FFFFFF) or 0x1A000000 // 10% opacity
-                val endColor = 0x00000000 // Transparent
-
-                // Update left gradient (linear, bottom-left to top-right)
-                gradientLeft?.background = GradientDrawable(
-                    GradientDrawable.Orientation.BL_TR,
-                    intArrayOf(startColor, centerColor, endColor)
-                )
-
-                // Update right gradient (radial from bottom-right corner)
-                gradientRight?.background = GradientDrawable(
-                    GradientDrawable.Orientation.BR_TL, // Placeholder for radial
-                    intArrayOf(startColor, centerColor, endColor)
-                ).apply {
-                    gradientType = GradientDrawable.RADIAL_GRADIENT
-                    gradientRadius = 800f * context.resources.displayMetrics.density
-                    // Note: Can't set center position via GradientDrawable, handled by XML
-                }
-            }
-
-            start()
-        }
-
-        // Update current color for next transition
-        currentGradientColor = baseColor
     }
 
     /**
@@ -613,12 +457,12 @@ class ScreensaverController(
      */
     private fun applyKenBurnsEffect(targetView: ImageView) {
         // Random horizontal direction: pan left or right
-        val panDistance = 40f
+        val panDistance = 60f
         val startTranslateX = if (Math.random() < 0.5) -panDistance else panDistance
         val endTranslateX = -startTranslateX
 
-        // Slight zoom to ensure no empty space shows when panning
-        val scale = 1.08f
+        // Zoom in more for a more obvious pan effect
+        val scale = 1.15f
 
         // Cancel any existing animation to prevent glitches
         targetView.animate().cancel()
@@ -695,6 +539,147 @@ class ScreensaverController(
         titleLogoView.layoutParams = layoutParams
 
         Log.d(TAG, "Logo: ${intrinsicWidth}x${intrinsicHeight} (${String.format("%.2f", aspectRatio)}:1) → ${finalWidthDp.toInt()}x${finalHeightDp.toInt()}dp (screen: ${screenWidthDp.toInt()}x${screenHeightDp.toInt()}dp)")
+    }
+
+    /**
+     * Extract colors from specific corners of the image and apply to gradients
+     * Bottom-left corner color for left gradient, bottom-right for right gradient
+     */
+    private fun updateGradientsWithImageColor(targetView: ImageView) {
+        val drawable = targetView.drawable ?: return
+
+        scope.launch(Dispatchers.Default) {
+            try {
+                // Get bitmap from drawable
+                val originalBitmap = if (drawable is BitmapDrawable) {
+                    drawable.bitmap
+                } else {
+                    drawable.toBitmap()
+                }
+
+                // Convert hardware bitmap to software bitmap if needed
+                val softwareBitmap = if (originalBitmap.config == android.graphics.Bitmap.Config.HARDWARE) {
+                    originalBitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                } else {
+                    originalBitmap
+                }
+
+                val width = softwareBitmap.width
+                val height = softwareBitmap.height
+
+                // Define corner regions (bottom 40% height, left/right 40% width)
+                val cornerWidth = (width * 0.4f).toInt()
+                val cornerHeight = (height * 0.4f).toInt()
+                val bottomY = height - cornerHeight
+
+                // Extract bottom-left corner
+                val bottomLeftBitmap = android.graphics.Bitmap.createBitmap(
+                    softwareBitmap,
+                    0,
+                    bottomY,
+                    cornerWidth,
+                    cornerHeight
+                )
+
+                // Extract bottom-right corner
+                val bottomRightBitmap = android.graphics.Bitmap.createBitmap(
+                    softwareBitmap,
+                    width - cornerWidth,
+                    bottomY,
+                    cornerWidth,
+                    cornerHeight
+                )
+
+                // Generate palettes for each corner
+                val leftPalette = Palette.from(bottomLeftBitmap).generate()
+                val rightPalette = Palette.from(bottomRightBitmap).generate()
+
+                // Get dark colors from each corner
+                val leftColor = leftPalette.darkMutedSwatch?.rgb
+                    ?: leftPalette.darkVibrantSwatch?.rgb
+                    ?: leftPalette.mutedSwatch?.rgb
+                    ?: 0xFF000000.toInt()
+
+                val rightColor = rightPalette.darkMutedSwatch?.rgb
+                    ?: rightPalette.darkVibrantSwatch?.rgb
+                    ?: rightPalette.mutedSwatch?.rgb
+                    ?: 0xFF000000.toInt()
+
+                Log.d(TAG, "Corner colors - Left: #${Integer.toHexString(leftColor)}, Right: #${Integer.toHexString(rightColor)}")
+
+                withContext(Dispatchers.Main) {
+                    updateGradientColors(leftColor, rightColor)
+                }
+
+                // Clean up corner bitmaps
+                bottomLeftBitmap.recycle()
+                bottomRightBitmap.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error extracting palette colors", e)
+            }
+        }
+    }
+
+    /**
+     * Update gradient views with extracted colors from each corner
+     * Animates smoothly from current colors to new colors
+     */
+    private fun updateGradientColors(leftColor: Int, rightColor: Int) {
+        // Cancel any existing animations
+        leftGradientAnimator?.cancel()
+        rightGradientAnimator?.cancel()
+
+        // Animate left gradient
+        leftGradientAnimator = ValueAnimator.ofObject(ArgbEvaluator(), currentLeftGradientColor, leftColor).apply {
+            duration = CROSSFADE_DURATION_MS
+
+            addUpdateListener { animator ->
+                val animatedColor = animator.animatedValue as Int
+
+                // Create gradient colors with the extracted color
+                val startColor = (animatedColor and 0x00FFFFFF) or 0xF5000000.toInt() // 96% opacity
+                val centerColor = (animatedColor and 0x00FFFFFF) or 0xB3000000.toInt() // 70% opacity
+                val midColor = (animatedColor and 0x00FFFFFF) or 0x4D000000 // 30% opacity
+                val endColor = 0x00000000 // Transparent
+
+                gradientLeft?.background = GradientDrawable().apply {
+                    gradientType = GradientDrawable.RADIAL_GRADIENT
+                    colors = intArrayOf(startColor, centerColor, midColor, endColor)
+                    gradientRadius = 0.70f * context.resources.displayMetrics.widthPixels
+                    setGradientCenter(0f, 1f) // Bottom-left
+                }
+            }
+
+            start()
+        }
+
+        // Animate right gradient
+        rightGradientAnimator = ValueAnimator.ofObject(ArgbEvaluator(), currentRightGradientColor, rightColor).apply {
+            duration = CROSSFADE_DURATION_MS
+
+            addUpdateListener { animator ->
+                val animatedColor = animator.animatedValue as Int
+
+                // Create gradient colors with the extracted color
+                val startColor = (animatedColor and 0x00FFFFFF) or 0xF5000000.toInt() // 96% opacity
+                val centerColor = (animatedColor and 0x00FFFFFF) or 0xB3000000.toInt() // 70% opacity
+                val midColor = (animatedColor and 0x00FFFFFF) or 0x4D000000 // 30% opacity
+                val endColor = 0x00000000 // Transparent
+
+                gradientRight?.background = GradientDrawable().apply {
+                    gradientType = GradientDrawable.RADIAL_GRADIENT
+                    colors = intArrayOf(startColor, centerColor, midColor, endColor)
+                    gradientRadius = 0.50f * context.resources.displayMetrics.widthPixels
+                    setGradientCenter(1f, 1f) // Bottom-right
+                }
+            }
+
+            start()
+        }
+
+        // Update current colors for next transition
+        currentLeftGradientColor = leftColor
+        currentRightGradientColor = rightColor
     }
 }
 

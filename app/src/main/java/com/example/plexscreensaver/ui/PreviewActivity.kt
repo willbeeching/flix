@@ -31,7 +31,6 @@ class PreviewActivity : AppCompatActivity() {
         // Initialize views
         val imageView: ImageView = findViewById(R.id.screensaver_image)
         val imageViewAlternate: ImageView = findViewById(R.id.screensaver_image_alternate)
-        val imageViewBlurred: ImageView? = findViewById(R.id.screensaver_image_blurred)
         val titleLogoView: ImageView = findViewById(R.id.title_logo)
         val gradientLeft: View? = findViewById(R.id.logo_gradient)
         val gradientRight: View? = findViewById(R.id.logo_gradient_right)
@@ -42,7 +41,6 @@ class PreviewActivity : AppCompatActivity() {
             scope = lifecycleScope,
             imageView = imageView,
             imageViewAlternate = imageViewAlternate,
-            imageViewBlurred = imageViewBlurred,
             titleLogoView = titleLogoView,
             gradientLeft = gradientLeft,
             gradientRight = gradientRight

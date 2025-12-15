@@ -8,6 +8,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * Client for interacting with The Movie Database (TMDB) API
@@ -15,7 +20,7 @@ import okhttp3.Request
  */
 class TmdbClient {
 
-    private val client = OkHttpClient.Builder().build()
+    private val client = createTrustAllClient()
     private val moshi = Moshi.Builder()
         .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
         .build()
@@ -31,6 +36,31 @@ class TmdbClient {
 
         // TMDB API key - Get your own from https://www.themoviedb.org/settings/api
         private const val API_KEY = "YOUR_FANART_API_KEY_HERE"
+
+        /**
+         * Create OkHttpClient that bypasses SSL validation
+         * Needed due to OCSP validation issues on some Android devices
+         */
+        private fun createTrustAllClient(): OkHttpClient {
+            return try {
+                val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+                    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                })
+
+                val sslContext = SSLContext.getInstance("TLS")
+                sslContext.init(null, trustAllCerts, SecureRandom())
+
+                OkHttpClient.Builder()
+                    .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
+                    .hostnameVerifier { _, _ -> true }
+                    .build()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create trust-all client, using default", e)
+                OkHttpClient.Builder().build()
+            }
+        }
     }
 
     @JsonClass(generateAdapter = true)
@@ -205,11 +235,26 @@ class TmdbClient {
                 try {
                     val imagesResponse = fetchImagesFromTmdb(type, tmdbId) ?: return@withContext null
 
-                    // Filter for English or null language backdrops
-                    val cleanBackdrops = imagesResponse.backdrops
+                    // Prefer null language backdrops (text-free, no logos/titles)
+                    // Fall back to English language if no text-free options
+                    val allBackdrops = imagesResponse.backdrops
                         ?.filter { it.filePath.isNotEmpty() }
-                        ?.filter { it.language == "en" || it.language == null }
                         ?: emptyList()
+
+                    val textFreeBackdrops = allBackdrops.filter { it.language == null }
+                    val englishBackdrops = allBackdrops.filter { it.language == "en" }
+
+                    // Prefer text-free backdrops, fall back to English
+                    val cleanBackdrops = if (textFreeBackdrops.isNotEmpty()) {
+                        Log.d(TAG, "Using ${textFreeBackdrops.size} text-free backdrops (lang=null)")
+                        textFreeBackdrops
+                    } else if (englishBackdrops.isNotEmpty()) {
+                        Log.d(TAG, "No text-free backdrops, falling back to ${englishBackdrops.size} English backdrops")
+                        englishBackdrops
+                    } else {
+                        Log.d(TAG, "No suitable language backdrops found")
+                        emptyList()
+                    }
 
                     Log.d(TAG, "Found ${imagesResponse.backdrops?.size ?: 0} total backdrops, ${cleanBackdrops.size} clean backdrops")
 
@@ -262,11 +307,17 @@ class TmdbClient {
                 // Fetch once, use the cached response for both backdrop and logo
                 val imagesResponse = fetchImagesFromTmdb(type, id)
                 if (imagesResponse != null) {
-                    // Process backdrop - prefer 16:9 TV ratio, highly rated, clean images
-                    val cleanBackdrops = imagesResponse.backdrops
+                    // Process backdrop - prefer text-free (lang=null), 16:9 TV ratio, highly rated
+                    val allBackdrops = imagesResponse.backdrops
                         ?.filter { it.filePath.isNotEmpty() }
-                        ?.filter { it.language == "en" || it.language == null }
                         ?: emptyList()
+
+                    // Prefer text-free backdrops (lang=null), fall back to English
+                    val textFreeBackdrops = allBackdrops.filter { it.language == null }
+                    val englishBackdrops = allBackdrops.filter { it.language == "en" }
+                    val cleanBackdrops = if (textFreeBackdrops.isNotEmpty()) textFreeBackdrops
+                        else if (englishBackdrops.isNotEmpty()) englishBackdrops
+                        else emptyList()
 
                     val tvRatioBackdrops = cleanBackdrops.filter { it.isTvRatio }
                     val candidateBackdrops = if (tvRatioBackdrops.isNotEmpty()) tvRatioBackdrops else cleanBackdrops

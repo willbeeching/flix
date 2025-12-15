@@ -5,16 +5,6 @@
     android:fitsSystemWindows="false"
     android:background="@android:color/black">
 
-    <!-- Blurred background layer (for depth effect) -->
-    <ImageView
-        android:id="@+id/screensaver_image_blurred"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scaleType="centerCrop"
-        android:adjustViewBounds="false"
-        android:alpha="0.3"
-        android:contentDescription="@string/screensaver_image_description" />
-
     <!-- Primary image view -->
     <ImageView
         android:id="@+id/screensaver_image"
@@ -35,14 +25,14 @@
         android:alpha="0"
         android:contentDescription="@string/screensaver_image_description" />
 
-    <!-- Gradient overlay for logo framing - bottom-left to top-right -->
+    <!-- Dark vignette for bottom-left corner -->
     <View
         android:id="@+id/logo_gradient"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/logo_gradient_overlay" />
 
-    <!-- Gradient overlay for PlexFlix logo - full screen, concentrated in bottom-right -->
+    <!-- Dark vignette for bottom-right corner -->
     <View
         android:id="@+id/logo_gradient_right"
         android:layout_width="match_parent"
@@ -52,8 +42,8 @@
     <!-- PlexFlix branding - bottom right corner -->
     <ImageView
         android:id="@+id/plexflix_logo"
-        android:layout_width="120dp"
-        android:layout_height="35dp"
+        android:layout_width="90dp"
+        android:layout_height="26dp"
         android:layout_gravity="bottom|end"
         android:layout_marginEnd="60dp"
         android:layout_marginBottom="60dp"
@@ -68,7 +58,7 @@
         android:layout_gravity="bottom|start"
         android:layout_marginStart="60dp"
         android:layout_marginBottom="60dp"
-        android:scaleType="fitStart"
+        android:scaleType="fitEnd"
         android:adjustViewBounds="false"
         android:visibility="gone"
         android:contentDescription="@string/title_logo_description" />

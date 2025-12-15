@@ -11,6 +11,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.xmlpull.v1.XmlPullParser
 import java.io.StringReader
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+import javax.net.ssl.HostnameVerifier
 
 /**
  * Client for interacting with Plex Media Server API
@@ -20,6 +25,26 @@ class PlexApiClient(private val authToken: String) {
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
+        .apply {
+            // Trust all certificates (needed for local Plex servers with self-signed certs)
+            try {
+                val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                })
+
+                val sslContext = SSLContext.getInstance("TLS")
+                sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+
+                sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
+                hostnameVerifier(HostnameVerifier { _, _ -> true })
+
+                Log.d(TAG, "SSL certificate validation disabled for local Plex servers")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting up SSL trust manager", e)
+            }
+        }
         .build()
     private val moshi = Moshi.Builder()
         .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
@@ -355,15 +380,20 @@ class PlexApiClient(private val authToken: String) {
                         val type = currentItem["type"] ?: "unknown"
                         val ratingKey = currentItem["ratingKey"]
 
-                        // Look for TMDB GUID in the child Guid elements, fall back to main guid
-                        val tmdbGuid = itemGuids.firstOrNull { it.startsWith("tmdb://") } ?: currentItem["guid"]
+                        // Store ALL GUIDs (tmdb://, tvdb://, etc.) joined by | for different services
+                        // Fanart.tv needs TVDB ID, TMDB client needs TMDB ID
+                        val allGuids = if (itemGuids.isNotEmpty()) {
+                            itemGuids.joinToString("|")
+                        } else {
+                            currentItem["guid"] ?: ""
+                        }
 
                         // Debug: Log GUIDs for first few items
                         if (items.size < 3) {
                             Log.d(TAG, "Item: $title")
                             Log.d(TAG, "  Main GUID: ${currentItem["guid"]}")
                             Log.d(TAG, "  Child GUIDs: $itemGuids")
-                            Log.d(TAG, "  Selected GUID: $tmdbGuid")
+                            Log.d(TAG, "  All GUIDs: $allGuids")
                             Log.d(TAG, "  clearLogo: $clearLogoUrl")
                         }
 
@@ -386,7 +416,7 @@ class PlexApiClient(private val authToken: String) {
                                     year = year,
                                     type = type,
                                     ratingKey = ratingKey,
-                                    guid = tmdbGuid
+                                    guid = allGuids
                                 )
                             )
                         }

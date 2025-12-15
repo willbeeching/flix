@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Dark vignette in bottom-right corner for PlexFlix logo readability -->
     <gradient
-        android:startColor="#CC000000"
-        android:centerColor="#1A000000"
+        android:startColor="#F5000000"
+        android:centerColor="#B3000000"
         android:endColor="#00000000"
         android:type="radial"
-        android:gradientRadius="800dp"
+        android:gradientRadius="50%p"
         android:centerX="1.0"
         android:centerY="1.0" />
 </shape>
