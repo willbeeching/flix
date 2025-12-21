@@ -39,13 +39,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Settings Activity -->
-        <activity
-            android:name=".ui.SettingsActivity"
-            android:exported="false"
-            android:label="@string/settings_title"
-            android:theme="@style/Theme.PlexScreensaver" />
-
         <!-- Server Selection Activity -->
         <activity
             android:name=".ui.ServerSelectionActivity"
@@ -66,6 +59,13 @@
             android:exported="false"
             android:theme="@style/Theme.PlexScreensaver"
             android:screenOrientation="landscape" />
+
+        <!-- API Settings Activity -->
+        <activity
+            android:name=".ui.ApiSettingsActivity"
+            android:exported="false"
+            android:label="API Settings"
+            android:theme="@style/Theme.PlexScreensaver" />
 
         <!-- Screensaver Dream Service -->
         <service

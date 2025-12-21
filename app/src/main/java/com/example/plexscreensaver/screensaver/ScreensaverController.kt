@@ -16,6 +16,7 @@ import com.example.plexscreensaver.plex.FanartTvClient
 import com.example.plexscreensaver.plex.PlexApiClient
 import com.example.plexscreensaver.plex.PlexAuthManager
 import com.example.plexscreensaver.plex.TmdbClient
+import com.example.plexscreensaver.settings.ApiKeyManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,8 +38,9 @@ class ScreensaverController(
     private val gradientRight: View? = null
 ) {
     private val authManager = PlexAuthManager(context)
-    private val tmdbClient = TmdbClient()
-    private val fanartClient = FanartTvClient()
+    private val apiKeyManager = ApiKeyManager(context)
+    private val tmdbClient = TmdbClient(apiKeyManager.getTmdbApiKey())
+    private val fanartClient = FanartTvClient(apiKeyManager.getFanartApiKey())
     private var rotationJob: Job? = null
     private val artworkItems = mutableListOf<PlexApiClient.ArtworkItem>()
     private var currentIndex = 0
@@ -60,6 +62,108 @@ class ScreensaverController(
         private const val LOGO_FADE_IN_DELAY_MS = 500L // Delay after backdrop before logo appears
         private const val LOGO_FADE_DURATION_MS = 1000L // Logo fade in/out duration
         private const val LOGO_DISPLAY_TIME_MS = 15000L // How long logo stays visible
+
+        // PROMO MODE: Set to true to use curated promo sequence instead of Plex library
+        private const val PROMO_MODE = false
+
+        // Curated promo items for demo/screenshots
+        private val PROMO_ITEMS = listOf(
+            // Movies (TMDB IDs)
+            PlexApiClient.ArtworkItem(
+                title = "Interstellar",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2014",
+                type = "movie",
+                ratingKey = null,
+                guid = "tmdb://157336",
+                preferredArtworkId = "86717"
+            ),
+            PlexApiClient.ArtworkItem(
+                title = "Gravity",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2013",
+                type = "movie",
+                ratingKey = null,
+                guid = "tmdb://49047"
+            ),
+            PlexApiClient.ArtworkItem(
+                title = "The Dark Knight",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2012",
+                type = "movie",
+                ratingKey = null,
+                guid = "tmdb://49026",
+                preferredArtworkId = "19713"
+            ),
+            PlexApiClient.ArtworkItem(
+                title = "Skyfall",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2012",
+                type = "movie",
+                ratingKey = null,
+                guid = "tmdb://37724",
+                preferredArtworkId = "17052"
+            ),
+            PlexApiClient.ArtworkItem(
+                title = "Pluribus",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2025",
+                type = "show",
+                ratingKey = null,
+                guid = "tvdb://436457",
+                preferredArtworkId = "205212"
+            ),
+            // TV Shows (TVDB IDs)
+            PlexApiClient.ArtworkItem(
+                title = "The Last of Us",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2023",
+                type = "show",
+                ratingKey = null,
+                guid = "tvdb://392256"
+            ),
+            PlexApiClient.ArtworkItem(
+                title = "Silo",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2017",
+                type = "show",
+                ratingKey = null,
+                guid = "tvdb://330942",
+                preferredArtworkId = "81773"
+            ),
+            PlexApiClient.ArtworkItem(
+                title = "House of the Dragon",
+                thumbUrl = null,
+                artUrl = null,
+                titleCardUrl = null,
+                rating = null,
+                year = "2022",
+                type = "show",
+                ratingKey = null,
+                guid = "tvdb://371572"
+            )
+        )
     }
 
     init {
@@ -74,7 +178,26 @@ class ScreensaverController(
      * Start the screensaver - load artwork and begin rotation
      */
     fun start() {
-        loadArtwork()
+        if (PROMO_MODE) {
+            Log.d(TAG, "🎬 PROMO MODE ENABLED - Using curated showcase items")
+            loadPromoItems()
+        } else {
+            loadArtwork()
+        }
+    }
+
+    /**
+     * Load curated promo items for demo/screenshots
+     */
+    private fun loadPromoItems() {
+        artworkItems.clear()
+        artworkItems.addAll(PROMO_ITEMS)
+        Log.d(TAG, "Loaded ${artworkItems.size} promo items: ${artworkItems.map { it.title }}")
+
+        // Start rotation on main thread
+        scope.launch(Dispatchers.Main) {
+            startRotation()
+        }
     }
 
     /**
@@ -223,9 +346,13 @@ class ScreensaverController(
         // Cancel any existing rotation job
         rotationJob?.cancel()
 
+        // Track how many items we've shown (for promo mode fade to black)
+        var itemsShown = 0
+
         rotationJob = scope.launch {
             // Show first image immediately
             showNextImage()
+            itemsShown++
 
             while (isActive) {
                 // Wait for logo display time
@@ -240,12 +367,51 @@ class ScreensaverController(
                     delay(LOGO_FADE_DURATION_MS)
                 }
 
+                // In promo mode, fade to black after showing all items
+                if (PROMO_MODE && itemsShown >= artworkItems.size) {
+                    Log.d(TAG, "🎬 Promo complete - fading to black")
+                    fadeToBlack()
+                    break
+                }
+
                 // Now transition to next image
                 showNextImage()
+                itemsShown++
             }
         }
 
         Log.d(TAG, "Started rotation with ${artworkItems.size} items")
+    }
+
+    /**
+     * Fade all elements to black for clean loop point
+     */
+    private fun fadeToBlack() {
+        val fadeDuration = CROSSFADE_DURATION_MS
+
+        // Fade out both image views
+        imageView.animate()
+            .alpha(0f)
+            .setDuration(fadeDuration)
+            .start()
+
+        imageViewAlternate.animate()
+            .alpha(0f)
+            .setDuration(fadeDuration)
+            .start()
+
+        // Fade out gradients
+        gradientLeft?.animate()
+            ?.alpha(0f)
+            ?.setDuration(fadeDuration)
+            ?.start()
+
+        gradientRight?.animate()
+            ?.alpha(0f)
+            ?.setDuration(fadeDuration)
+            ?.start()
+
+        Log.d(TAG, "Fading to black complete")
     }
 
 
@@ -270,7 +436,7 @@ class ScreensaverController(
         if (item.guid != null) {
             scope.launch(Dispatchers.IO) {
                 // Try Fanart.tv first for both backdrop and logo
-                val (fanartBackdropUrl, fanartLogoUrl) = fanartClient.getImagesFromGuid(item.guid, item.type)
+                val (fanartBackdropUrl, fanartLogoUrl) = fanartClient.getImagesFromGuid(item.guid, item.type, item.preferredArtworkId)
 
                 // Then try TMDB for backdrop and logo
                 val (tmdbBackdropUrl, tmdbLogoUrl) = tmdbClient.getImagesFromGuid(item.guid, item.type)
@@ -504,21 +670,23 @@ class ScreensaverController(
         val screenHeightDp = context.resources.configuration.screenHeightDp.toFloat()
 
         // Target a percentage of screen width based on aspect ratio
-        // This creates smooth, continuous sizing instead of discrete jumps
+        // Wider logos get larger width percentage to maintain visual weight
         val targetWidthPercentage = when {
-            aspectRatio > 8f -> 0.18f  // Very wide logos (e.g., 12:1) can be bigger
-            aspectRatio > 4f -> 0.16f  // Wide logos (e.g., 5:1 clearLogos)
-            aspectRatio > 2f -> 0.14f  // Medium logos (e.g., 3:1)
-            else -> 0.12f              // Square-ish logos (e.g., 1:1)
+            aspectRatio > 10f -> 0.38f // Ultra-wide logos (e.g., 15:1)
+            aspectRatio > 7f -> 0.34f  // Very wide logos (e.g., 10:1)
+            aspectRatio > 5f -> 0.30f  // Wide logos (e.g., 6:1 clearLogos)
+            aspectRatio > 3f -> 0.24f  // Medium-wide logos (e.g., 4:1)
+            aspectRatio > 2f -> 0.18f  // Medium logos (e.g., 3:1)
+            else -> 0.14f              // Square-ish logos (e.g., 1:1)
         }
 
         val targetWidthDp = screenWidthDp * targetWidthPercentage
         val targetHeightDp = targetWidthDp / aspectRatio
 
         // Clamp to reasonable bounds
-        val maxWidthDp = screenWidthDp * 0.25f  // Never more than 25% of screen
-        val maxHeightDp = screenHeightDp * 0.15f // Never more than 15% of screen height
-        val minHeightDp = 40f // Ensure readability
+        val maxWidthDp = screenWidthDp * 0.42f  // Up to 42% of screen for very wide logos
+        val maxHeightDp = screenHeightDp * 0.12f // Max 12% of screen height
+        val minHeightDp = 45f // Ensure readability
 
         val finalHeightDp = targetHeightDp.coerceIn(minHeightDp, maxHeightDp)
 
@@ -533,9 +701,14 @@ class ScreensaverController(
         val widthPx = (finalWidthDp * density).toInt()
         val heightPx = (finalHeightDp * density).toInt()
 
-        val layoutParams = titleLogoView.layoutParams
-        layoutParams.width = widthPx
-        layoutParams.height = heightPx
+        // Use FrameLayout.LayoutParams to ensure bottom|start gravity
+        // Bottom margin adjusted to align with Flix logo baseline
+        val marginStartPx = (60 * density).toInt()
+        val marginBottomPx = (52 * density).toInt()  // Slightly less than Flix to align baselines
+        val layoutParams = android.widget.FrameLayout.LayoutParams(widthPx, heightPx).apply {
+            gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+            setMargins(marginStartPx, 0, 0, marginBottomPx)
+        }
         titleLogoView.layoutParams = layoutParams
 
         Log.d(TAG, "Logo: ${intrinsicWidth}x${intrinsicHeight} (${String.format("%.2f", aspectRatio)}:1) → ${finalWidthDp.toInt()}x${finalHeightDp.toInt()}dp (screen: ${screenWidthDp.toInt()}x${screenHeightDp.toInt()}dp)")

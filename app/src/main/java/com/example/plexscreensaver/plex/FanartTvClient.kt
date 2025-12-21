@@ -17,8 +17,9 @@ import javax.net.ssl.X509TrustManager
 /**
  * Client for interacting with Fanart.tv API
  * Provides high-quality, text-free backgrounds for movies and TV shows
+ * @param apiKey API key (required - returns null results if not provided)
  */
-class FanartTvClient {
+class FanartTvClient(private val apiKey: String?) {
 
     private val client = createTrustAllClient()
     private val moshi = Moshi.Builder()
@@ -28,12 +29,13 @@ class FanartTvClient {
     // Cache to avoid duplicate API calls
     private val imageCache = mutableMapOf<String, FanartResponse>()
 
+    // Check if client is configured
+    val isConfigured: Boolean
+        get() = apiKey != null
+
     companion object {
         private const val TAG = "FanartTvClient"
         private const val BASE_URL = "https://webservice.fanart.tv/v3.2"
-
-        // Fanart.tv API key
-        private const val API_KEY = "YOUR_TMDB_API_KEY_HERE"
 
         /**
          * Create OkHttpClient that bypasses SSL validation
@@ -141,6 +143,12 @@ class FanartTvClient {
      * Fetch images from Fanart.tv
      */
     private suspend fun fetchFromFanart(endpoint: String): FanartResponse? {
+        // Skip if no API key configured
+        if (apiKey == null) {
+            Log.d(TAG, "Fanart.tv API key not configured, skipping")
+            return null
+        }
+
         return withContext(Dispatchers.IO) {
             try {
                 val cacheKey = endpoint
@@ -149,7 +157,7 @@ class FanartTvClient {
                     return@withContext it
                 }
 
-                val url = "$BASE_URL$endpoint?api_key=$API_KEY"
+                val url = "$BASE_URL$endpoint?api_key=$apiKey"
                 Log.d(TAG, "Fetching from Fanart.tv: $endpoint")
 
                 val request = Request.Builder()
@@ -190,9 +198,21 @@ class FanartTvClient {
     /**
      * Get best background from a list of Fanart images
      * Prefers: 1) Highest resolution, 2) Text-free (lang=""), 3) Most likes
+     * If preferredId is specified, returns that specific image
      */
-    private fun selectBestBackground(backgrounds: List<FanartImage>?): FanartImage? {
+    private fun selectBestBackground(backgrounds: List<FanartImage>?, preferredId: String? = null): FanartImage? {
         if (backgrounds.isNullOrEmpty()) return null
+
+        // If a specific ID is requested, find it
+        if (preferredId != null) {
+            val preferred = backgrounds.find { it.id == preferredId }
+            if (preferred != null) {
+                Log.d(TAG, "Using preferred background ID $preferredId: ${preferred.resolution}, ${preferred.likesInt} likes")
+                return preferred
+            } else {
+                Log.w(TAG, "Preferred background ID $preferredId not found, falling back to auto-select")
+            }
+        }
 
         // Prefer text-free backgrounds (empty lang)
         val textFree = backgrounds.filter { it.isTextFree }
@@ -240,14 +260,14 @@ class FanartTvClient {
      * Get background and logo for a movie using TMDB ID
      * Returns Pair(backdropUrl, logoUrl)
      */
-    private suspend fun getMovieImages(tmdbId: String): Pair<String?, String?> {
+    private suspend fun getMovieImages(tmdbId: String, preferredArtworkId: String? = null): Pair<String?, String?> {
         val response = fetchFromFanart("/movies/$tmdbId")
 
-        // Get all backgrounds and select best by resolution
+        // Get all backgrounds and select best by resolution (or preferred ID)
         val backgrounds = response?.movieBackgrounds
         Log.d(TAG, "Movie backgrounds: ${backgrounds?.size ?: 0} available")
 
-        val backdrop = selectBestBackground(backgrounds)
+        val backdrop = selectBestBackground(backgrounds, preferredArtworkId)
         if (backdrop != null) {
             val resLabel = if (backdrop.is4K) "4K" else "HD"
             Log.d(TAG, "✓ Movie background: $resLabel ${backdrop.resolution} - ${backdrop.url.substringAfterLast("/")}")
@@ -268,14 +288,14 @@ class FanartTvClient {
      * Get background and logo for a TV show using TVDB ID
      * Returns Pair(backdropUrl, logoUrl)
      */
-    private suspend fun getTvShowImages(tvdbId: String): Pair<String?, String?> {
+    private suspend fun getTvShowImages(tvdbId: String, preferredArtworkId: String? = null): Pair<String?, String?> {
         val response = fetchFromFanart("/tv/$tvdbId")
 
-        // Get all backgrounds and select best by resolution
+        // Get all backgrounds and select best by resolution (or preferred ID)
         val backgrounds = response?.showBackgrounds
         Log.d(TAG, "TV backgrounds: ${backgrounds?.size ?: 0} available")
 
-        val backdrop = selectBestBackground(backgrounds)
+        val backdrop = selectBestBackground(backgrounds, preferredArtworkId)
         if (backdrop != null) {
             val resLabel = if (backdrop.is4K) "4K" else "HD"
             Log.d(TAG, "✓ TV background: $resLabel ${backdrop.resolution} - ${backdrop.url.substringAfterLast("/")}")
@@ -297,14 +317,14 @@ class FanartTvClient {
      * Get background and logo for a TV show using TMDB ID
      * Returns Pair(backdropUrl, logoUrl)
      */
-    private suspend fun getTvShowImagesByTmdb(tmdbId: String): Pair<String?, String?> {
+    private suspend fun getTvShowImagesByTmdb(tmdbId: String, preferredArtworkId: String? = null): Pair<String?, String?> {
         val response = fetchFromFanart("/tv/$tmdbId")
 
-        // Get all backgrounds and select best by resolution
+        // Get all backgrounds and select best by resolution (or preferred ID)
         val backgrounds = response?.showBackgrounds
         Log.d(TAG, "TV backgrounds (TMDB): ${backgrounds?.size ?: 0} available")
 
-        val backdrop = selectBestBackground(backgrounds)
+        val backdrop = selectBestBackground(backgrounds, preferredArtworkId)
         if (backdrop != null) {
             val resLabel = if (backdrop.is4K) "4K" else "HD"
             Log.d(TAG, "✓ TV background (TMDB): $resLabel ${backdrop.resolution} - ${backdrop.url.substringAfterLast("/")}")
@@ -326,21 +346,22 @@ class FanartTvClient {
      * Get backdrop and logo from Plex GUID
      * Returns Pair(backdropUrl, logoUrl)
      * Automatically detects movie vs TV show and uses appropriate ID
+     * @param preferredArtworkId Optional Fanart.tv image ID to use instead of auto-selecting
      */
-    suspend fun getImagesFromGuid(guid: String, itemType: String?): Pair<String?, String?> {
+    suspend fun getImagesFromGuid(guid: String, itemType: String?, preferredArtworkId: String? = null): Pair<String?, String?> {
         return withContext(Dispatchers.IO) {
             when (itemType) {
                 "movie" -> {
                     val tmdbId = extractTmdbId(guid)
                     if (tmdbId != null) {
-                        getMovieImages(tmdbId)
+                        getMovieImages(tmdbId, preferredArtworkId)
                     } else Pair(null, null)
                 }
                 "show", "episode" -> {
                     // Try TVDB ID first (preferred for TV shows)
                     val tvdbId = extractTvdbId(guid)
                     if (tvdbId != null) {
-                        val result = getTvShowImages(tvdbId)
+                        val result = getTvShowImages(tvdbId, preferredArtworkId)
                         if (result.first != null || result.second != null) {
                             return@withContext result
                         }
@@ -349,24 +370,27 @@ class FanartTvClient {
                     val tmdbId = extractTmdbId(guid)
                     if (tmdbId != null) {
                         Log.d(TAG, "Trying TMDB ID $tmdbId for TV show (TVDB fallback)")
-                        getTvShowImagesByTmdb(tmdbId)
+                        getTvShowImagesByTmdb(tmdbId, preferredArtworkId)
                     } else Pair(null, null)
                 }
                 else -> {
                     // Try movie first, then TV
                     val tmdbId = extractTmdbId(guid)
                     if (tmdbId != null) {
-                        val result = getMovieImages(tmdbId)
+                        val result = getMovieImages(tmdbId, preferredArtworkId)
                         if (result.first != null || result.second != null) {
                             return@withContext result
                         }
                     }
                     val tvdbId = extractTvdbId(guid)
                     if (tvdbId != null) {
-                        getTvShowImages(tvdbId)
+                        getTvShowImages(tvdbId, preferredArtworkId)
                     } else Pair(null, null)
                 }
             }
         }
     }
 }
+
+
+

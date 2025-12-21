@@ -3,17 +3,27 @@ package com.example.plexscreensaver.ui
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.plexscreensaver.R
 import androidx.lifecycle.lifecycleScope
 import com.example.plexscreensaver.plex.PlexApiClient
 import com.example.plexscreensaver.plex.PlexAuthManager
+import com.example.plexscreensaver.ui.theme.GoogleSansFontFamily
 import com.example.plexscreensaver.ui.theme.PlexScreensaverTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,9 +43,10 @@ class ServerSelectionActivity : ComponentActivity() {
 
         setContent {
             PlexScreensaverTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0A0A0A))
                 ) {
                     ServerSelectionScreen(
                         authManager = authManager,
@@ -101,66 +112,119 @@ fun ServerSelectionScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    // Colors matching main screen
+    val textColor = Color.White
+    val subtextColor = Color.White.copy(alpha = 0.4f)
+    val errorColor = Color(0xFFFF453A)
+
+    val dividerColor = Color.White.copy(alpha = 0.1f)
+
+    Row(
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        Text(
-            text = "Select Plex Server",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
+        // Left column - Logo
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.plexflix_logo),
+                contentDescription = "Flix Logo",
+                modifier = Modifier.size(width = 200.dp, height = 58.dp)
+            )
+        }
+
+        // Center Vertical Divider
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .fillMaxHeight()
+                .background(dividerColor)
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Right column - Server list
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 56.dp, vertical = 56.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Heading
+            Text(
+                text = "Server selection.",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = GoogleSansFontFamily,
+                color = subtextColor,
+                letterSpacing = 0.5.sp
+            )
+            Text(
+                text = "Pick you media server.",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = GoogleSansFontFamily,
+                color = textColor,
+                letterSpacing = 0.5.sp
+            )
 
-        Text(
-            text = "Choose which server to display artwork from",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            Spacer(modifier = Modifier.height(32.dp))
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        when {
-            isLoading -> {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Loading servers...")
-            }
-
-            errorMessage != null -> {
-                Text(
-                    text = errorMessage!!,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-
-            servers.isEmpty() -> {
-                Text(
-                    text = "No servers found",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            else -> {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    servers.forEach { server ->
-                        ServerItem(
-                            server = server,
-                            isSelected = server.clientIdentifier == selectedServerId,
-                            onClick = {
-                                authManager.saveSelectedServer(server.name, server.clientIdentifier)
-                                selectedServerId = server.clientIdentifier
-                                onServerSelected()
-                            }
+            when {
+                isLoading -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(color = textColor)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "Loading servers...",
+                            fontSize = 16.sp,
+                            fontFamily = GoogleSansFontFamily,
+                            color = subtextColor
                         )
+                    }
+                }
+
+                errorMessage != null -> {
+                    Text(
+                        text = errorMessage!!,
+                        fontSize = 16.sp,
+                        fontFamily = GoogleSansFontFamily,
+                        color = errorColor
+                    )
+                }
+
+                servers.isEmpty() -> {
+                    Text(
+                        text = "No servers found",
+                        fontSize = 16.sp,
+                        fontFamily = GoogleSansFontFamily,
+                        color = subtextColor
+                    )
+                }
+
+                else -> {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        servers.forEach { server ->
+                            ServerItem(
+                                server = server,
+                                isSelected = server.clientIdentifier == selectedServerId,
+                                onClick = {
+                                    authManager.saveSelectedServer(server.name, server.clientIdentifier)
+                                    selectedServerId = server.clientIdentifier
+                                    onServerSelected()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -174,56 +238,50 @@ fun ServerItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    Card(
+    val backgroundColor = if (isSelected) {
+        Color.White.copy(alpha = 0.1f)
+    } else {
+        Color.White.copy(alpha = 0.05f)
+    }
+    val textColor = Color.White
+    val subtextColor = Color.White.copy(alpha = 0.6f)
+
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .height(64.dp)
             .clickable(onClick = onClick),
-        colors = if (isSelected) {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        } else {
-            CardDefaults.cardColors()
-        }
+        shape = RoundedCornerShape(12.dp),
+        color = backgroundColor
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = server.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = server.uri,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
+            Text(
+                text = server.name,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = GoogleSansFontFamily,
+                color = textColor,
+                letterSpacing = 0.5.sp
+            )
 
             if (isSelected) {
-                Spacer(modifier = Modifier.width(16.dp))
-                Text(
-                    text = "✓",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(end = 20.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Text(
+                        text = "✓",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = GoogleSansFontFamily,
+                        color = Color(0xFF00E676)
+                    )
+                }
             }
         }
     }

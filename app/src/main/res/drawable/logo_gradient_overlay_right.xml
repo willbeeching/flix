@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Dark vignette in bottom-right corner for PlexFlix logo readability -->
+    <!-- Dark vignette in bottom-right corner for Flix logo readability -->
     <gradient
         android:startColor="#F5000000"
         android:centerColor="#B3000000"

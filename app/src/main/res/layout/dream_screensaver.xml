@@ -39,7 +39,7 @@
         android:layout_height="match_parent"
         android:background="@drawable/logo_gradient_overlay_right" />
 
-    <!-- PlexFlix branding - bottom right corner -->
+    <!-- Flix branding - bottom right corner -->
     <ImageView
         android:id="@+id/plexflix_logo"
         android:layout_width="90dp"
@@ -50,16 +50,15 @@
         android:src="@drawable/plexflix_logo"
         android:contentDescription="@string/plexflix_logo_description" />
 
-    <!-- Title logo/card - Netflix style -->
+    <!-- Title logo/card - Netflix style, bottom-aligned with Flix logo -->
     <ImageView
         android:id="@+id/title_logo"
-        android:layout_width="240dp"
-        android:layout_height="90dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
         android:layout_marginStart="60dp"
         android:layout_marginBottom="60dp"
-        android:scaleType="fitEnd"
-        android:adjustViewBounds="false"
+        android:scaleType="fitXY"
         android:visibility="gone"
         android:contentDescription="@string/title_logo_description" />
 

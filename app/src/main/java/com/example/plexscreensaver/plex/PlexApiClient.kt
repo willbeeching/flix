@@ -109,7 +109,8 @@ class PlexApiClient(private val authToken: String) {
         val year: String?,
         val type: String, // movie, show, episode, etc.
         val ratingKey: String?, // For fetching additional metadata
-        val guid: String? // Plex GUID (may contain TMDB ID)
+        val guid: String?, // Plex GUID (may contain TMDB ID)
+        val preferredArtworkId: String? = null // Optional Fanart.tv artwork ID to use
     )
 
     /**

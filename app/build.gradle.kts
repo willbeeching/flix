@@ -83,5 +83,14 @@ dependencies {
 
     // Leanback for Android TV
     implementation("androidx.leanback:leanback:1.0.0")
+
+    // NanoHTTPD for local settings server
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // QR Code generation
+    implementation("com.google.zxing:core:3.5.2")
+
+    // Google Fonts
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.6.1")
 }
 

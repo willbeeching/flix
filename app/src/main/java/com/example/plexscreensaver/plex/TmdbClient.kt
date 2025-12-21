@@ -17,8 +17,9 @@ import javax.net.ssl.X509TrustManager
 /**
  * Client for interacting with The Movie Database (TMDB) API
  * Used to fetch title logos and other artwork not available from Plex
+ * @param apiKey API key (required - returns null results if not provided)
  */
-class TmdbClient {
+class TmdbClient(private val apiKey: String?) {
 
     private val client = createTrustAllClient()
     private val moshi = Moshi.Builder()
@@ -29,13 +30,14 @@ class TmdbClient {
     // TMDB free tier: 40 requests per 10 seconds - we're being careful!
     private val imageCache = mutableMapOf<String, ImagesResponse>()
 
+    // Check if client is configured
+    val isConfigured: Boolean
+        get() = apiKey != null
+
     companion object {
         private const val TAG = "TmdbClient"
         private const val BASE_URL = "https://api.themoviedb.org/3"
         private const val IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original"
-
-        // TMDB API key - Get your own from https://www.themoviedb.org/settings/api
-        private const val API_KEY = "YOUR_FANART_API_KEY_HERE"
 
         /**
          * Create OkHttpClient that bypasses SSL validation
@@ -140,6 +142,12 @@ class TmdbClient {
      * IMPORTANT: This fetches both logos and backdrops in ONE API call to save quota
      */
     private suspend fun fetchImagesFromTmdb(type: String, tmdbId: String): ImagesResponse? {
+        // Skip if no API key configured
+        if (apiKey == null) {
+            Log.d(TAG, "TMDB API key not configured, skipping")
+            return null
+        }
+
         return withContext(Dispatchers.IO) {
             try {
                 val cacheKey = "$type/$tmdbId"
@@ -159,7 +167,7 @@ class TmdbClient {
                     }
                 }
 
-                val url = "$BASE_URL$endpoint?api_key=$API_KEY"
+                val url = "$BASE_URL$endpoint?api_key=$apiKey"
                 Log.d(TAG, "Fetching TMDB images from: $endpoint (API call)")
 
                 val request = Request.Builder()

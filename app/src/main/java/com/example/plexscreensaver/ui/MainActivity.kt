@@ -1,22 +1,40 @@
 package com.example.plexscreensaver.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.plexscreensaver.R
 import com.example.plexscreensaver.plex.PlexAuthManager
+import com.example.plexscreensaver.ui.theme.GoogleSansFontFamily
 import com.example.plexscreensaver.ui.theme.PlexScreensaverTheme
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Main activity - landing screen for the app
@@ -32,15 +50,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             PlexScreensaverTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0A0A0A))
                 ) {
                     MainScreen(
                         isAuthenticated = authManager.isAuthenticated(),
                         selectedServerName = authManager.getSelectedServerName(),
                         selectedLibrariesCount = authManager.getSelectedLibraries().size,
-                        onOpenSettings = { openSettings() },
                         onOpenScreensaverSettings = { openScreensaverSettings() },
                         onPreviewScreensaver = { previewScreensaver() },
                         onSelectServer = { openServerSelection() },
@@ -49,10 +67,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    private fun openSettings() {
-        startActivity(Intent(this, SettingsActivity::class.java))
     }
 
     private fun openScreensaverSettings() {
@@ -86,15 +100,15 @@ class MainActivity : ComponentActivity() {
         // Refresh the UI when returning from settings
         setContent {
             PlexScreensaverTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0A0A0A))
                 ) {
                     MainScreen(
                         isAuthenticated = authManager.isAuthenticated(),
                         selectedServerName = authManager.getSelectedServerName(),
                         selectedLibrariesCount = authManager.getSelectedLibraries().size,
-                        onOpenSettings = { openSettings() },
                         onOpenScreensaverSettings = { openScreensaverSettings() },
                         onPreviewScreensaver = { previewScreensaver() },
                         onSelectServer = { openServerSelection() },
@@ -111,213 +125,569 @@ fun MainScreen(
     isAuthenticated: Boolean,
     selectedServerName: String?,
     selectedLibrariesCount: Int,
-    onOpenSettings: () -> Unit,
     onOpenScreensaverSettings: () -> Unit,
     onPreviewScreensaver: () -> Unit,
     onSelectServer: () -> Unit,
     onSelectLibraries: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        Spacer(modifier = Modifier.height(32.dp))
-        Text(
-            text = "🎬",
-            style = MaterialTheme.typography.displayLarge
-        )
+    var isAuthenticating by remember { mutableStateOf(false) }
+    var linkCode by remember { mutableStateOf<String?>(null) }
+    var linkUrl by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var authenticated by remember { mutableStateOf(isAuthenticated) }
 
-        Spacer(modifier = Modifier.height(16.dp))
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val authManager = remember { PlexAuthManager(context) }
 
-        Text(
-            text = "Plex Screensaver",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold
-        )
+    // Colors matching API Settings screen
+    val backgroundColor = Color(0xFF0A0A0A)
+    val textColor = Color.White
+    val subtextColor = Color.White.copy(alpha = 0.6f)
+    val buttonColor = Color(0xFF1A1A1A)
+    val errorColor = Color(0xFFFF453A)
 
-        Spacer(modifier = Modifier.height(8.dp))
+    if (isAuthenticating) {
+            // Authenticating state - Two column layout like API settings
+            val dividerColor = Color.White.copy(alpha = 0.1f)
 
-        Text(
-            text = "Display beautiful artwork from your Plex library",
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
-
-        if (isAuthenticated) {
-            Card(
+            Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+                    .fillMaxSize()
+                    .padding(56.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
+                // Left Column: QR Code
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "✓ Connected to Plex",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    Column(
+                        modifier = Modifier.width(300.dp),
+                        horizontalAlignment = Alignment.Start
+                    ) {
+                        Text(
+                            text = "Link Plex.",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = GoogleSansFontFamily,
+                            color = textColor,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = "Scan the QR code.",
+                            fontSize = 24.sp,
+                            fontFamily = GoogleSansFontFamily,
+                            color = textColor.copy(alpha = 0.4f),
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        Spacer(modifier = Modifier.height(64.dp))
+
+                        if (linkUrl != null) {
+                            val qrBitmap = remember(linkUrl) { generateQRCode(linkUrl!!) }
+                            if (qrBitmap != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(280.dp)
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color.White)
+                                        .padding(0.dp)
+                                ) {
+                                    Image(
+                                        bitmap = qrBitmap.asImageBitmap(),
+                                        contentDescription = "QR Code",
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                Text(
+                                    text = linkUrl!!.replace("https://", "").replace("http://", ""),
+                                    fontSize = 15.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = subtextColor,
+                                    fontWeight = FontWeight.Medium,
+                                    letterSpacing = 1.sp,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.width(280.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Center Vertical Divider
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(dividerColor)
+                )
+
+                // Right Column: PIN Code and Status
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Column(
+                        modifier = Modifier.width(280.dp)
+                    ) {
+                        // Top Section
+                        Column {
+                            Text(
+                                text = "Enter Code.",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = GoogleSansFontFamily,
+                                color = textColor,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "On your device.",
+                                fontSize = 24.sp,
+                                fontFamily = GoogleSansFontFamily,
+                                color = textColor.copy(alpha = 0.4f),
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            Spacer(modifier = Modifier.height(64.dp))
+
+                            if (linkCode != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            color = textColor.copy(alpha = 0.05f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = linkCode!!.uppercase(),
+                                        fontSize = 48.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color.White,
+                                        letterSpacing = 4.sp
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(32.dp))
+
+                            // Status
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    color = textColor,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Waiting for authorization...",
+                                    fontSize = 16.sp,
+                                    fontFamily = GoogleSansFontFamily,
+                                    color = subtextColor
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(48.dp))
+
+                        // Bottom Section: Cancel Button
+                        Button(
+                            onClick = {
+                                isAuthenticating = false
+                                linkCode = null
+                                linkUrl = null
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = buttonColor,
+                                contentColor = errorColor
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 32.dp, vertical = 16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                        ) {
+                            Text(
+                                "Cancel",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = GoogleSansFontFamily
+                            )
+                        }
+
+                        if (errorMessage != null) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = errorMessage!!,
+                                fontSize = 14.sp,
+                                fontFamily = GoogleSansFontFamily,
+                                color = errorColor
+                            )
+                        }
+                    }
                 }
             }
+    } else {
+        if (authenticated) {
+            // Authenticated - Two column layout
+            val dividerColor = Color.White.copy(alpha = 0.1f)
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = "Setup Instructions:",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
+                // Left Column: Logo
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.plexflix_logo),
+                        contentDescription = "Flix Logo",
+                        modifier = Modifier
+                            .width(200.dp)
+                            .height(58.dp)
+                    )
+                }
+
+                // Center Vertical Divider
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(dividerColor)
+                )
+
+                // Right Column: Buttons
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Column(
+                        modifier = Modifier.width(340.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                // Preview Screensaver Button (Primary)
+                Button(
+                    onClick = onPreviewScreensaver,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .width(340.dp)
+                        .height(48.dp)
                 ) {
                     Text(
-                        text = "1. Tap 'Set as Screensaver' below",
-                        style = MaterialTheme.typography.bodyMedium
+                        "Preview Screensaver",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Set as Screensaver Button
+                Button(
+                    onClick = onOpenScreensaverSettings,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = buttonColor,
+                        contentColor = textColor
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .width(340.dp)
+                        .height(48.dp)
+                ) {
                     Text(
-                        text = "2. Select 'Plex Screensaver' from the list",
-                        style = MaterialTheme.typography.bodyMedium
+                        "Set as Screensaver",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Server Selection Button
+                Button(
+                    onClick = onSelectServer,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = buttonColor,
+                        contentColor = textColor
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .width(340.dp)
+                        .height(48.dp)
+                ) {
                     Text(
-                        text = "3. Your Plex artwork will display when the screensaver activates",
-                        style = MaterialTheme.typography.bodyMedium
+                        if (selectedServerName == null) "Select Server" else "Server: $selectedServerName",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Button(
-                onClick = onPreviewScreensaver,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-            ) {
-                Text("▶ Preview Screensaver")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = onOpenScreensaverSettings,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-            ) {
-                Text("Set as Screensaver")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = onSelectServer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp),
-                colors = if (selectedServerName == null) {
-                    ButtonDefaults.buttonColors()
-                } else {
-                    ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondary
+                // Library Selection Button
+                Button(
+                    onClick = onSelectLibraries,
+                    enabled = selectedServerName != null,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = buttonColor,
+                        contentColor = textColor,
+                        disabledContainerColor = buttonColor.copy(alpha = 0.5f),
+                        disabledContentColor = textColor.copy(alpha = 0.3f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .width(340.dp)
+                        .height(48.dp)
+                ) {
+                    val text = if (selectedLibrariesCount > 0) {
+                        "Libraries ($selectedLibrariesCount)"
+                    } else {
+                        "Select Libraries"
+                    }
+                    Text(
+                        text,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
                     )
                 }
-            ) {
-                Text(if (selectedServerName == null) "Select Server" else "Change Server")
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Button(
-                onClick = onSelectLibraries,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp),
-                enabled = selectedServerName != null,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.tertiary
-                )
-            ) {
-                val text = if (selectedLibrariesCount > 0) {
-                    "Libraries ($selectedLibrariesCount selected)"
-                } else {
-                    "Select Libraries"
+                // API Settings Button
+                Button(
+                    onClick = {
+                        context.startActivity(Intent(context, ApiSettingsActivity::class.java))
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = buttonColor,
+                        contentColor = textColor
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .width(340.dp)
+                        .height(48.dp)
+                ) {
+                    Text(
+                        "API Settings",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
+                    )
                 }
-                Text(text)
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            OutlinedButton(
-                onClick = onOpenSettings,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-            ) {
-                Text("Plex Settings")
+                // Sign Out Button
+                Button(
+                    onClick = {
+                        authManager.signOut()
+                        authenticated = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = buttonColor,
+                        contentColor = errorColor
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                    modifier = Modifier
+                        .width(340.dp)
+                        .height(48.dp)
+                ) {
+                    Text(
+                        "Sign Out",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
+                    )
+                }
+                    }
+                }
             }
         } else {
-            Card(
+            // Not authenticated - Logo and buttons centered
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(56.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
+                // Logo
+                Image(
+                    painter = painterResource(id = R.drawable.plexflix_logo),
+                    contentDescription = "Flix Logo",
+                    modifier = Modifier
+                        .width(400.dp)
+                        .height(115.dp)
+                )
+
+                Spacer(modifier = Modifier.height(64.dp))
+
+                // Not connected - show Connect to Plex and API Settings buttons
                 Column(
-                    modifier = Modifier.padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                Button(
+                    onClick = {
+                        isAuthenticating = true
+                        errorMessage = null
+
+                        scope.launch {
+                            try {
+                                // Run network operations on IO dispatcher
+                                val result = withContext(Dispatchers.IO) {
+                                    // Request PIN
+                                    val pinResult = authManager.requestPin()
+
+                                    if (pinResult.isFailure) {
+                                        return@withContext Result.failure<String>(
+                                            pinResult.exceptionOrNull() ?: Exception("Unknown error")
+                                        )
+                                    }
+
+                                    val linkResult = pinResult.getOrNull()!!
+
+                                    // Update UI on main thread
+                                    withContext(Dispatchers.Main) {
+                                        linkCode = linkResult.code
+                                        linkUrl = linkResult.linkUrl
+                                    }
+
+                                    // Poll for authorization
+                                    authManager.pollForAuth(
+                                        pinId = linkResult.pinId,
+                                        timeoutSeconds = 300
+                                    )
+                                }
+
+                                if (result.isSuccess) {
+                                    authenticated = true
+                                    isAuthenticating = false
+                                    linkCode = null
+                                    linkUrl = null
+                                } else {
+                                    errorMessage = "Failed to authenticate: ${result.exceptionOrNull()?.message}"
+                                    isAuthenticating = false
+                                }
+                            } catch (e: Exception) {
+                                errorMessage = "Error: ${e.message}"
+                                isAuthenticating = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 32.dp, vertical = 16.dp),
+                    modifier = Modifier
+                        .width(280.dp)
+                        .height(56.dp)
+                ) {
                     Text(
-                        text = "Not Connected",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onErrorContainer
+                        "Connect to Plex",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // API Settings Button
+                Button(
+                    onClick = {
+                        context.startActivity(Intent(context, ApiSettingsActivity::class.java))
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = buttonColor,
+                        contentColor = textColor
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 32.dp, vertical = 16.dp),
+                    modifier = Modifier
+                        .width(280.dp)
+                        .height(56.dp)
+                ) {
+                    Text(
+                        "API Settings",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = GoogleSansFontFamily
+                    )
+                }
+
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text(
+                        text = errorMessage!!,
+                        fontSize = 14.sp,
+                        fontFamily = GoogleSansFontFamily,
+                        color = errorColor
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = "Connect your Plex account to get started",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = onOpenSettings,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-            ) {
-                Text("Connect to Plex")
             }
         }
     }
 }
 
+/**
+ * Generate a QR code bitmap for the given URL
+ */
+private fun generateQRCode(url: String, size: Int = 512): Bitmap? {
+    return try {
+        val writer = QRCodeWriter()
+        val bitMatrix = writer.encode(url, BarcodeFormat.QR_CODE, size, size)
+
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+        bitmap
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}

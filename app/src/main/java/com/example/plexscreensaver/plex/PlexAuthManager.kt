@@ -52,6 +52,7 @@ class PlexAuthManager(private val context: Context) {
     data class PinResponse(
         val id: Int,
         val code: String,
+        val qr: String? = null,
         @Json(name = "product") val product: String? = null,
         @Json(name = "trusted") val trusted: Boolean = false,
         @Json(name = "clientIdentifier") val clientIdentifier: String? = null,
@@ -140,12 +141,16 @@ class PlexAuthManager(private val context: Context) {
                 ?: return Result.failure(Exception("Failed to parse PIN response"))
 
             Log.d(TAG, "PIN requested successfully: ${pinResponse.code}")
+            Log.d(TAG, "QR URL from Plex: ${pinResponse.qr}")
+
+            // Construct the proper link URL with the PIN code embedded
+            val linkUrl = "$PLEX_TV_BASE/link#!?code=${pinResponse.code}"
 
             Result.success(
                 LinkResult(
                     pinId = pinResponse.id,
                     code = pinResponse.code,
-                    linkUrl = "$PLEX_TV_BASE/link"
+                    linkUrl = linkUrl
                 )
             )
         } catch (e: Exception) {
@@ -213,22 +218,32 @@ class PlexAuthManager(private val context: Context) {
     ): Result<String> {
         val startTime = System.currentTimeMillis()
         val timeoutMs = timeoutSeconds * 1000L
+        var attemptCount = 0
+
+        Log.d(TAG, "Starting to poll for auth. PIN ID: $pinId, Timeout: ${timeoutSeconds}s")
 
         while (System.currentTimeMillis() - startTime < timeoutMs) {
+            attemptCount++
+            Log.d(TAG, "Polling attempt #$attemptCount for PIN $pinId")
+
             val result = checkPin(pinId)
 
             if (result.isFailure) {
+                Log.e(TAG, "PIN check failed: ${result.exceptionOrNull()?.message}")
                 return Result.failure(result.exceptionOrNull() ?: Exception("Unknown error"))
             }
 
             val token = result.getOrNull()
             if (token != null) {
+                Log.d(TAG, "Auth token received! Polling complete after $attemptCount attempts")
                 return Result.success(token)
             }
 
+            Log.d(TAG, "No token yet, waiting ${intervalMs}ms before next check...")
             delay(intervalMs)
         }
 
+        Log.e(TAG, "Polling timeout after $attemptCount attempts and ${timeoutSeconds}s")
         return Result.failure(Exception("Timeout waiting for user to link device"))
     }
 
