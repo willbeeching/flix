@@ -125,7 +125,7 @@ dependencies {
     implementation("androidx.palette:palette-ktx:1.0.0")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     // Leanback for Android TV
     implementation("androidx.leanback:leanback:1.0.0")
