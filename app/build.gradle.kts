@@ -50,12 +50,14 @@ android {
             versionNameSuffix = "-debug"
             isDebuggable = true
             isMinifyEnabled = false
+            buildConfigField("boolean", "SHOW_FLIX_LOGO", "true")  // Show Flix logo in debug builds
         }
 
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
+            buildConfigField("boolean", "SHOW_FLIX_LOGO", "false")  // Hide Flix logo in release
             // signingConfig = signingConfigs.getByName("release")  // Uncomment when signing config is set
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
