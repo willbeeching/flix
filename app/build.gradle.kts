@@ -118,8 +118,8 @@ dependencies {
     implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
 
     // Image Loading
-    implementation("io.coil-kt:coil:2.6.0")
-    implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("io.coil-kt:coil:2.7.0")
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Palette for extracting colors from images
     implementation("androidx.palette:palette-ktx:1.0.0")
