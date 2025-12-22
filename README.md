@@ -7,6 +7,8 @@
 
 A modern Android screensaver app that displays stunning artwork from your Plex Media Server library.
 
+**[Video Demo & Write-up](https://willbeeching.com/a-plex-powered-netflix-inspired-screensaver/)**
+
 ## Features
 
 -   **QR Code Authentication** - Scan and connect to Plex instantly with your phone
