@@ -43,7 +43,7 @@ Enhancement suggestions are welcome! When creating an enhancement suggestion:
 ### Prerequisites
 
 -   Android Studio (latest stable version)
--   JDK 11 or higher
+-   JDK 17 or higher
 -   Android SDK with API 21-34
 -   Git
 
