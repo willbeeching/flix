@@ -541,131 +541,154 @@ fun MainScreen(
                 }
             }
         } else {
-            // Not authenticated - Logo and buttons centered
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(56.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+            // Not authenticated - Two column layout
+            val dividerColor = Color.White.copy(alpha = 0.1f)
+
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                // Logo
-                Image(
-                    painter = painterResource(id = R.drawable.flix_logo),
-                    contentDescription = "Flix Logo",
+                // Left Column: Logo
+                Column(
                     modifier = Modifier
-                        .width(400.dp)
-                        .height(129.dp)
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.flix_logo),
+                        contentDescription = "Flix Logo",
+                        modifier = Modifier
+                            .width(200.dp)
+                            .height(64.dp)
+                    )
+                }
+
+                // Center Vertical Divider
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(dividerColor)
                 )
 
-                Spacer(modifier = Modifier.height(64.dp))
-
-                // Not connected - show Connect to Plex and API Settings buttons
+                // Right Column: Buttons
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                Button(
-                    onClick = {
-                        isAuthenticating = true
-                        errorMessage = null
+                    Column(
+                        modifier = Modifier.width(340.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Connect to Plex Button (Primary)
+                        Button(
+                            onClick = {
+                                isAuthenticating = true
+                                errorMessage = null
 
-                        scope.launch {
-                            try {
-                                // Run network operations on IO dispatcher
-                                val result = withContext(Dispatchers.IO) {
-                                    // Request PIN
-                                    val pinResult = authManager.requestPin()
+                                scope.launch {
+                                    try {
+                                        // Run network operations on IO dispatcher
+                                        val result = withContext(Dispatchers.IO) {
+                                            // Request PIN
+                                            val pinResult = authManager.requestPin()
 
-                                    if (pinResult.isFailure) {
-                                        return@withContext Result.failure<String>(
-                                            pinResult.exceptionOrNull() ?: Exception("Unknown error")
-                                        )
+                                            if (pinResult.isFailure) {
+                                                return@withContext Result.failure<String>(
+                                                    pinResult.exceptionOrNull() ?: Exception("Unknown error")
+                                                )
+                                            }
+
+                                            val linkResult = pinResult.getOrNull()!!
+
+                                            // Update UI on main thread
+                                            withContext(Dispatchers.Main) {
+                                                linkCode = linkResult.code
+                                                linkUrl = linkResult.linkUrl
+                                            }
+
+                                            // Poll for authorization
+                                            authManager.pollForAuth(
+                                                pinId = linkResult.pinId,
+                                                timeoutSeconds = 300
+                                            )
+                                        }
+
+                                        if (result.isSuccess) {
+                                            authenticated = true
+                                            isAuthenticating = false
+                                            linkCode = null
+                                            linkUrl = null
+                                        } else {
+                                            errorMessage = "Failed to authenticate: ${result.exceptionOrNull()?.message}"
+                                            isAuthenticating = false
+                                        }
+                                    } catch (e: Exception) {
+                                        errorMessage = "Error: ${e.message}"
+                                        isAuthenticating = false
                                     }
-
-                                    val linkResult = pinResult.getOrNull()!!
-
-                                    // Update UI on main thread
-                                    withContext(Dispatchers.Main) {
-                                        linkCode = linkResult.code
-                                        linkUrl = linkResult.linkUrl
-                                    }
-
-                                    // Poll for authorization
-                                    authManager.pollForAuth(
-                                        pinId = linkResult.pinId,
-                                        timeoutSeconds = 300
-                                    )
                                 }
-
-                                if (result.isSuccess) {
-                                    authenticated = true
-                                    isAuthenticating = false
-                                    linkCode = null
-                                    linkUrl = null
-                                } else {
-                                    errorMessage = "Failed to authenticate: ${result.exceptionOrNull()?.message}"
-                                    isAuthenticating = false
-                                }
-                            } catch (e: Exception) {
-                                errorMessage = "Error: ${e.message}"
-                                isAuthenticating = false
-                            }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .width(340.dp)
+                                .height(48.dp)
+                        ) {
+                            Text(
+                                "Connect to Plex",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = GoogleSansFontFamily
+                            )
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = Color.Black
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 32.dp, vertical = 16.dp),
-                    modifier = Modifier
-                        .width(280.dp)
-                        .height(56.dp)
-                ) {
-                    Text(
-                        "Connect to Plex",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = GoogleSansFontFamily
-                    )
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                // API Settings Button
-                Button(
-                    onClick = {
-                        context.startActivity(Intent(context, ApiSettingsActivity::class.java))
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = buttonColor,
-                        contentColor = textColor
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 32.dp, vertical = 16.dp),
-                    modifier = Modifier
-                        .width(280.dp)
-                        .height(56.dp)
-                ) {
-                    Text(
-                        "API Settings",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = GoogleSansFontFamily
-                    )
-                }
+                        // API Settings Button
+                        Button(
+                            onClick = {
+                                context.startActivity(Intent(context, ApiSettingsActivity::class.java))
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = buttonColor,
+                                contentColor = textColor
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                            modifier = Modifier
+                                .width(340.dp)
+                                .height(48.dp)
+                        ) {
+                            Text(
+                                "API Settings",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = GoogleSansFontFamily
+                            )
+                        }
 
-                if (errorMessage != null) {
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Text(
-                        text = errorMessage!!,
-                        fontSize = 14.sp,
-                        fontFamily = GoogleSansFontFamily,
-                        color = errorColor
-                    )
+                        if (errorMessage != null) {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(
+                                text = errorMessage!!,
+                                fontSize = 14.sp,
+                                fontFamily = GoogleSansFontFamily,
+                                color = errorColor,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
                 }
-            }
             }
         }
     }
