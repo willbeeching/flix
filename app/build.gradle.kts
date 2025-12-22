@@ -4,20 +4,59 @@ plugins {
 }
 
 android {
-    namespace = "com.example.plexscreensaver"
+    namespace = "com.willbeeching.flix"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.plexscreensaver"
+        applicationId = "com.willbeeching.flix"
         minSdk = 21
         targetSdk = 34
+
+        // Version - Update these for each release (also update CHANGELOG.md)
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
+
+        // Enable build config fields
+        buildConfigField("String", "VERSION_NAME", "\"${versionName}\"")
+        buildConfigField("int", "VERSION_CODE", "${versionCode}")
+    }
+
+    signingConfigs {
+        // For release builds, configure your signing key:
+        // 1. Create a keystore: keytool -genkey -v -keystore flix-release.jks ...
+        // 2. Add to local.properties (not committed):
+        //    RELEASE_STORE_FILE=/path/to/flix-release.jks
+        //    RELEASE_STORE_PASSWORD=your_store_password
+        //    RELEASE_KEY_ALIAS=your_key_alias
+        //    RELEASE_KEY_PASSWORD=your_key_password
+        // 3. Uncomment the signing config below
+
+        // create("release") {
+        //     val properties = java.util.Properties()
+        //     val localProperties = rootProject.file("local.properties")
+        //     if (localProperties.exists()) {
+        //         localProperties.inputStream().use { properties.load(it) }
+        //     }
+        //     storeFile = file(properties.getProperty("RELEASE_STORE_FILE") ?: "release.jks")
+        //     storePassword = properties.getProperty("RELEASE_STORE_PASSWORD")
+        //     keyAlias = properties.getProperty("RELEASE_KEY_ALIAS")
+        //     keyPassword = properties.getProperty("RELEASE_KEY_PASSWORD")
+        // }
     }
 
     buildTypes {
-        release {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            isDebuggable = true
             isMinifyEnabled = false
+        }
+
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
+            // signingConfig = signingConfigs.getByName("release")  // Uncomment when signing config is set
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -26,20 +65,21 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "11"
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.4"
+        kotlinCompilerExtensionVersion = "1.5.10"  // Compatible with Kotlin 1.9.22
     }
 }
 
@@ -65,7 +105,6 @@ dependencies {
 
     // Networking
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // JSON/XML Parsing
     implementation("com.squareup.moshi:moshi:1.15.0")
@@ -89,8 +128,5 @@ dependencies {
 
     // QR Code generation
     implementation("com.google.zxing:core:3.5.2")
-
-    // Google Fonts
-    implementation("androidx.compose.ui:ui-text-google-fonts:1.6.1")
 }
 

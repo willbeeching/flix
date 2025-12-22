@@ -1,200 +1,298 @@
-# Plex Screensaver for Android TV
+# Flix - Beautiful Screensaver for Android TV
 
-An Android screensaver app that displays beautiful artwork from your Plex Media Server library. Perfect for Android TV devices and Android phones/tablets.
+[![Android CI](https://github.com/willbeeching/flix/workflows/Android%20CI/badge.svg)](https://github.com/willbeeching/flix/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B-green.svg)](https://android.com)
+[![Language](https://img.shields.io/badge/Language-Kotlin-purple.svg)](https://kotlinlang.org)
+
+A modern Android screensaver app that displays stunning artwork from your Plex Media Server library.
 
 ## Features
 
-- 🔐 **Plex Link Authentication** - Secure OAuth device linking, no manual server configuration needed
-- 🎨 **High-Quality Artwork** - Shows 4K transparent logos and curated backdrops from your Plex library
-- 📺 **Android TV Optimized** - Designed for the big screen with fullscreen display
-- 🔄 **Smooth Transitions** - Beautiful crossfade effects with Ken Burns pan animation
-- 🌈 **Dynamic Color Gradients** - Automatically extracts colors from artwork for ambient lighting effects
-- ✨ **Blur Background Layer** - Subtle depth effect on Android 12+ (GPU-accelerated)
-- 🎬 **Smart Logo Sizing** - Intelligently sizes logos based on aspect ratio for consistent visual weight
-- 🖼️ **Curated Backgrounds** - Prioritizes Plex's clean backdrops over promotional images
-- ⚡ **Auto-Discovery** - Automatically finds and connects to your Plex servers
-- 📚 **Library Selection** - Choose specific libraries to display
-- 📱 **Mobile Support** - Works on Android phones and tablets too
+-   **QR Code Authentication** - Scan and connect to Plex instantly with your phone
+-   **Enhanced Artwork** - High-quality 4K logos and backdrops from Plex, Fanart.tv, and TMDB
+-   **Web-Based API Setup** - Configure artwork APIs via QR code from your mobile device
+-   **Smooth Transitions** - Elegant crossfade effects with Ken Burns pan animation
+-   **Dynamic Gradients** - Automatically extracts colors from artwork for ambient lighting
+-   **Smart Logo Sizing** - Intelligently sizes logos based on aspect ratio
+-   **Auto-Discovery** - Automatically finds and connects to your Plex servers
+-   **Library Selection** - Choose specific libraries to display
 
 ## Requirements
 
-- Android 5.0 (API 21) or higher
-- A Plex account
-- A Plex Media Server with movie or TV show libraries
+-   Android 5.0 (API 21) or higher
+-   Android TV or any Android device
+-   A Plex account
+-   A Plex Media Server with movie or TV show libraries
+-   Optional: Fanart.tv and TMDB API keys for enhanced artwork
 
-## Installation
+## Quick Start
 
-### Option 1: Build from Source
+### 1. Install the App
 
-1. Clone this repository
-2. Open in Android Studio
-3. Build and run on your device
+**Option A: Build from Source**
 
-### Option 2: Install APK
+```bash
+git clone https://github.com/willbeeching/flix.git
+cd flix
+./gradlew assembleDebug
+```
 
-1. Download the latest APK from the releases page
-2. Install on your Android device
-3. Grant necessary permissions
+**Option B: Install APK**
 
-## Setup Instructions
+-   Download the latest APK from releases
+-   Install on your Android TV device
 
-1. **Launch the app** on your Android device
-2. **Connect to Plex**:
-   - Tap "Connect to Plex"
-   - Visit the URL shown on screen (https://plex.tv/link)
-   - Enter the 4-digit code displayed
-   - Authorize the app in your Plex account
-3. **Set as Screensaver**:
-   - Tap "Set as Screensaver"
-   - Select "Plex Screensaver" from the list
-   - Configure screensaver timeout if desired
-4. **Enjoy!** - Your Plex artwork will now display when the screensaver activates
+### 2. Connect to Plex
+
+1. Launch Flix on your Android TV
+2. Scan the QR code with your phone or visit the displayed URL
+3. Authorize the device in your Plex account
+4. Select your Plex server
+5. Choose which libraries to display
+
+### 3. Configure API Keys (Optional)
+
+For the best artwork quality, add API keys:
+
+1. From the main screen, select **API Settings**
+2. Scan the QR code with your phone
+3. Enter your API keys:
+    - **Fanart.tv**: Get free key at [fanart.tv](https://fanart.tv/get-an-api-key/)
+    - **TMDB**: Get free key at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+4. Keys are validated automatically before saving
+
+### 4. Set as Screensaver
+
+1. Tap **Set as Screensaver** from the main menu
+2. Select "Flix" from the screensaver list
+3. Configure your timeout preferences
+4. Enjoy beautiful artwork from your library!
+
+### Main Screens
+
+-   **Home** - Quick access to preview, settings, and screensaver activation
+-   **Server Selection** - Choose which Plex server to use
+-   **Library Selection** - Pick specific libraries (movies, TV shows) to display
+-   **API Settings** - QR-based web configuration for artwork APIs
 
 ## How It Works
 
 ### Authentication Flow
 
 1. App requests a PIN from Plex's OAuth API
-2. User visits plex.tv/link and enters the code
-3. App polls Plex API until authorization is complete
+2. QR code is generated with authentication URL and PIN pre-filled
+3. User scans with phone and authorizes instantly
 4. Auth token is securely stored locally
+5. App discovers available Plex servers automatically
 
 ### Artwork Loading
 
-1. Discovers available Plex servers using the auth token
-2. Fetches library sections (movies and TV shows) with high-quality metadata
-3. Extracts Plex clearLogos (4K transparent PNGs) from Image elements
-4. Uses curated Plex backdrops, falling back to TMDB for maximum quality
-5. Applies dynamic color extraction for gradient overlays
-6. Displays artwork in rotation with smooth crossfade and Ken Burns effects
+1. Connects to selected Plex server and chosen libraries
+2. Fetches high-quality metadata for movies and TV shows
+3. Prioritizes artwork sources in this order:
+    - Plex clearLogos (4K transparent PNGs)
+    - Fanart.tv HD logos and backgrounds (if API key configured)
+    - TMDB backdrops and logos (if API key configured)
+    - Plex built-in artwork as fallback
+4. Extracts dominant colors for dynamic gradient overlays
+5. Displays artwork in rotation with smooth effects
+
+### API Key Configuration
+
+The web-based API setup provides a seamless experience:
+
+1. Local HTTP server starts on your Android TV device
+2. QR code is displayed with your device's local IP address
+3. Scan with your phone to access the web interface
+4. Enter API keys in a clean, mobile-optimized form
+5. Keys are validated in real-time before saving
+6. Settings sync instantly to your TV
 
 ## Technical Details
 
 ### Tech Stack
 
-- **Language**: Kotlin
-- **UI Framework**: Jetpack Compose
-- **Networking**: OkHttp
-- **Image Loading**: Coil
-- **JSON Parsing**: Moshi
-- **XML Parsing**: Android XmlPullParser
-- **Async**: Kotlin Coroutines
-- **Color Extraction**: AndroidX Palette
-- **Visual Effects**: RenderEffect (Android 12+)
+-   **Language**: Kotlin
+-   **UI Framework**: Jetpack Compose
+-   **Typography**: Google Sans
+-   **Networking**: OkHttp
+-   **Image Loading**: Coil
+-   **JSON Parsing**: Moshi
+-   **XML Parsing**: Android XmlPullParser
+-   **Async**: Kotlin Coroutines
+-   **Color Extraction**: AndroidX Palette
+-   **QR Codes**: ZXing
+-   **Local Server**: NanoHTTPD
+-   **Visual Effects**: RenderEffect (Android 12+)
 
 ### Architecture
 
 ```
 app/
 ├── plex/
-│   ├── PlexAuthManager.kt      # Handles Plex Link OAuth flow
-│   ├── PlexApiClient.kt         # Plex API interactions (with clearLogo support)
-│   └── TmdbClient.kt            # TMDB fallback for logos/backdrops
+│   ├── PlexAuthManager.kt         # Plex Link OAuth with QR codes
+│   ├── PlexApiClient.kt           # Plex API interactions
+│   ├── FanartTvClient.kt          # Fanart.tv API client
+│   └── TmdbClient.kt              # TMDB API client
 ├── screensaver/
-│   └── ScreensaverController.kt # Shared screensaver logic with effects
+│   └── ScreensaverController.kt   # Core screensaver logic
 ├── service/
-│   └── PlexScreensaverService.kt # DreamService implementation
+│   └── PlexScreensaverService.kt  # DreamService implementation
+├── settings/
+│   ├── ApiKeyManager.kt           # Secure API key storage
+│   └── SettingsServer.kt          # Local HTTP server for web setup
 └── ui/
-    ├── MainActivity.kt          # Landing screen
-    ├── SettingsActivity.kt      # Authentication UI
-    ├── ServerSelectionActivity.kt # Choose Plex server
-    ├── LibrarySelectionActivity.kt # Choose libraries
-    ├── PreviewActivity.kt       # Test screensaver
-    └── theme/                   # Material 3 theme
+    ├── MainActivity.kt            # Main hub screen
+    ├── ApiSettingsActivity.kt     # QR-based API setup
+    ├── ServerSelectionActivity.kt # Server selection
+    ├── LibrarySelectionActivity.kt # Library selection
+    ├── PreviewActivity.kt         # Screensaver preview
+    └── theme/
+        ├── Theme.kt               # Material 3 theme
+        └── Type.kt                # Google Sans typography
 ```
 
 ### Key Components
 
-- **PlexAuthManager**: Manages the Plex Link authentication flow
+-   **PlexAuthManager**: Manages Plex authentication
 
-  - Requests device PIN
-  - Polls for user authorization
-  - Stores auth token securely
+    -   Generates authentication QR codes with pre-filled PINs
+    -   Polls for authorization status
+    -   Securely stores auth tokens
 
-- **PlexApiClient**: Interacts with Plex Media Server API
+-   **PlexApiClient**: Plex Media Server API
 
-  - Discovers available servers
-  - Fetches library sections with Image elements
-  - Extracts clearLogo URLs (4K transparent PNGs)
-  - Retrieves high-quality artwork metadata
+    -   Discovers servers via Plex.tv
+    -   Fetches library sections with metadata
+    -   Extracts 4K clearLogos and artwork URLs
 
-- **TmdbClient**: Fetches supplementary artwork from TMDB
+-   **FanartTvClient**: Fanart.tv API integration
 
-  - Gets high-resolution backdrops (up to 4K)
-  - Retrieves title logos when Plex doesn't have them
-  - Filters for clean images (high vote_average)
-  - Caches responses to minimize API calls
+    -   Retrieves HD logos (clearlogo, hdtvlogo)
+    -   Fetches high-quality backgrounds
+    -   Caches responses to minimize API calls
 
-- **ScreensaverController**: Manages screensaver display and effects
-  - Loads artwork with smart prioritization (Plex first, TMDB fallback)
-  - Rotates images every 10 seconds with 2-second crossfade
-  - Extracts colors using Palette API for dynamic gradients
-  - Applies Ken Burns pan effect for subtle motion
-  - Intelligently sizes logos based on aspect ratio
-  - Manages blur layer on Android 12+ devices
+-   **TmdbClient**: TMDB API integration
+
+    -   Gets 4K backdrops and logos
+    -   Filters for clean, high-quality images
+    -   Provides fallback when Plex/Fanart.tv unavailable
+
+-   **SettingsServer**: Local web server for API setup
+
+    -   Serves mobile-optimized configuration UI
+    -   Validates API keys before saving
+    -   Provides real-time status updates
+    -   Handles emulator detection with ADB forwarding instructions
+
+-   **ScreensaverController**: Display management
+    -   Intelligent artwork prioritization
+    -   10-second rotation with 2-second crossfades
+    -   Dynamic color extraction for gradients
+    -   Ken Burns effect for subtle motion
+    -   Aspect ratio-aware logo sizing
 
 ## Customization
 
-You can customize various aspects by modifying the constants in the source code:
+### Code Customization
 
-- **Rotation Interval**: Change `ROTATION_INTERVAL_MS` in `ScreensaverController.kt` (default: 10 seconds)
-- **Crossfade Duration**: Adjust `CROSSFADE_DURATION_MS` in `ScreensaverController.kt` (default: 2 seconds)
-- **Blur Intensity**: Modify blur radius in `init{}` block (default: 25px)
-- **Logo Sizing**: Adjust percentage values in `adjustLogoSize()` (default: 12-18% of screen width)
-- **Image Batch Size**: Modify `batchSize` parameter in `getArtworkFromSection()` (default: 300 items)
-- **Library Selection**: Use the app UI to select specific libraries to display
+Edit constants in `ScreensaverController.kt`:
+
+```kotlin
+private const val ROTATION_INTERVAL_MS = 10000L    // Time per slide
+private const val CROSSFADE_DURATION_MS = 2000L    // Fade duration
+private const val LOGO_FADE_DURATION_MS = 1000L    // Logo fade
+private const val PROMO_MODE = false                // Demo mode toggle
+```
+
+### Logo Sizing
+
+Adjust percentages in `adjustLogoSize()` for different logo sizes:
+
+```kotlin
+val targetWidthPercentage = when {
+    aspectRatio > 10f -> 0.22f // Ultra-wide logos
+    aspectRatio > 7f -> 0.20f  // Very wide logos
+    aspectRatio > 5f -> 0.18f  // Wide logos (clearLogos)
+    aspectRatio > 3f -> 0.15f  // Medium-wide logos
+    aspectRatio > 2f -> 0.12f  // Medium logos
+    else -> 0.10f              // Square-ish logos
+}
+```
+
+### UI Customization
+
+All screens use consistent styling defined in:
+
+-   `Theme.kt` - Colors and theming
+-   `Type.kt` - Google Sans typography
+-   Dark background: `#0A0A0A`
+-   Accent colors defined throughout UI code
 
 ## Privacy & Security
 
-- Auth tokens are stored locally in encrypted SharedPreferences
-- No data is sent to third parties
-- All communication is directly between your device and Plex services
-- The app only requests read-only access to your Plex libraries
+-   Auth tokens stored in encrypted SharedPreferences
+-   API keys validated before storage
+-   No data sent to third parties
+-   Direct communication between device and Plex/API services
+-   Read-only access to Plex libraries
+-   Local web server only accessible on your network
+-   Server auto-stops when leaving API settings
+-   SSL certificate validation for all external APIs (TMDB, Fanart.tv, Plex.tv)
+-   SSL bypass only for local Plex servers with self-signed certificates
 
 ## Troubleshooting
 
-### Screensaver not showing artwork
+### No artwork showing
 
-1. Check that you're signed in to Plex in the app settings
-2. Ensure your Plex server is accessible
-3. Verify you have movie or TV show libraries with artwork
-4. Try signing out and signing back in
+1. Verify you're signed in (check main screen status)
+2. Ensure Plex server is accessible from your device
+3. Confirm you've selected at least one library
+4. Check that selected libraries contain movies/TV shows
+5. Try the Preview feature to test without waiting for screensaver
+
+### QR code won't scan
+
+1. Ensure phone and TV are on same network
+2. Try entering the URL manually
+3. If on emulator, use ADB forwarding (instructions shown on screen)
+4. Check firewall isn't blocking local connections
 
 ### Authentication failing
 
-1. Make sure you're entering the correct code at plex.tv/link
-2. Check your internet connection
-3. Try requesting a new code
+1. Verify internet connection on Android TV
+2. Make sure you authorize on the Plex website
+3. Try requesting a new PIN (restart the auth flow)
+4. Check Plex.tv is accessible
 
-### Images loading slowly
+### API keys not working
 
-1. This is normal on first load as images are downloaded
-2. Images are cached after first load
-3. Consider your network speed and Plex server location
+1. Verify keys are valid (test at fanart.tv or themoviedb.org)
+2. Check internet connectivity
+3. Review validation error messages
+4. Try disconnecting and re-entering keys
 
-## Recent Improvements
+### Emulator setup
 
-- [x] Plex clearLogo support (4K transparent PNGs)
-- [x] Blur background layer (Android 12+)
-- [x] Smart logo sizing algorithm
-- [x] Ken Burns pan effect
-- [x] Library selection UI
-- [x] Server selection UI
-- [x] Dynamic color-extracted gradients
-- [x] Prioritize curated Plex backgrounds
+When using Android Emulator:
 
-## Future Enhancements
-
-- [ ] Add movie/show titles overlay (optional)
-- [ ] TV remote control integration (pause/skip)
-- [ ] Display recently watched content
-- [ ] Show currently playing media
-- [ ] Customizable rotation speed (UI setting)
-- [ ] Photo library support
+1. Note the port shown on API Settings screen
+2. Run: `adb forward tcp:PORT tcp:PORT`
+3. Access via `http://localhost:PORT` on your host machine
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! We'd love your help making Flix even better.
+
+**Ways to contribute:**
+
+-   Report bugs and suggest features via [GitHub Issues](https://github.com/willbeeching/flix/issues)
+-   Submit pull requests for bug fixes or new features
+-   Improve documentation
+-   Share the project with others
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
@@ -202,10 +300,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Disclaimer
 
-This is an unofficial app and is not affiliated with or endorsed by Plex Inc.
+This is an unofficial app and is not affiliated with or endorsed by Plex Inc., Fanart.tv, or The Movie Database (TMDB).
 
 ## Acknowledgments
 
-- Plex for their excellent media server platform
-- The Android development community
-- All contributors to the libraries used in this project
+-   [Plex](https://www.plex.tv/) for their excellent media server platform
+-   [Fanart.tv](https://fanart.tv/) for high-quality artwork
+-   [The Movie Database](https://www.themoviedb.org/) for comprehensive media data
+-   The Android development community
+-   All contributors and open source libraries used in this project
