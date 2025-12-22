@@ -128,7 +128,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     // Leanback for Android TV
-    implementation("androidx.leanback:leanback:1.0.0")
+    implementation("androidx.leanback:leanback:1.2.0")
 
     // NanoHTTPD for local settings server
     implementation("org.nanohttpd:nanohttpd:2.3.1")
