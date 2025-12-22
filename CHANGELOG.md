@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha] - 2024-12-22
+## [0.1.0-alpha] - 2025-12-22
 
 **⚠️ ALPHA RELEASE - FOR TESTING ONLY**
 
@@ -27,7 +27,7 @@ This is an early alpha release for testing. Expect bugs and incomplete features!
 -   Lint warnings present (non-blocking)
 -   Requires manual API key configuration for enhanced artwork
 
-## [1.0.0] - 2024-12-14
+## [1.0.0] - 2025-12-14
 
 ### Added
 
