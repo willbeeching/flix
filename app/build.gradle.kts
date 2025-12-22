@@ -81,6 +81,13 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.10"  // Compatible with Kotlin 1.9.22
     }
+
+    lint {
+        // Don't abort build on lint warnings, only on errors
+        abortOnError = true
+        warningsAsErrors = false
+        checkReleaseBuilds = true
+    }
 }
 
 dependencies {
