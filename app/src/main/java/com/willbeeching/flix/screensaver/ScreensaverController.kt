@@ -737,8 +737,9 @@ class ScreensaverController(
                     drawable.toBitmap()
                 }
 
-                // Convert hardware bitmap to software bitmap if needed
-                val softwareBitmap = if (originalBitmap.config == android.graphics.Bitmap.Config.HARDWARE) {
+                // Convert hardware bitmap to software bitmap if needed (API 26+)
+                val softwareBitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+                    originalBitmap.config == android.graphics.Bitmap.Config.HARDWARE) {
                     originalBitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
                 } else {
                     originalBitmap
