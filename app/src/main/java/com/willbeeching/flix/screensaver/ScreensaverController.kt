@@ -179,16 +179,19 @@ class ScreensaverController(
      * Start the screensaver - load artwork and begin rotation
      */
     fun start() {
-        if (PROMO_MODE) {
-            Log.d(TAG, "🎬 PROMO MODE ENABLED - Using curated showcase items")
-            // Show Flix logo and right gradient in promo mode
+        // Control Flix logo visibility via BuildConfig (debug builds show it, release builds hide it)
+        if (com.willbeeching.flix.BuildConfig.SHOW_FLIX_LOGO) {
             flixLogoView?.visibility = View.VISIBLE
             gradientRight?.visibility = View.VISIBLE
-            loadPromoItems()
         } else {
-            // Hide Flix logo and right gradient when using actual Plex library
             flixLogoView?.visibility = View.GONE
             gradientRight?.visibility = View.GONE
+        }
+
+        if (PROMO_MODE) {
+            Log.d(TAG, "🎬 PROMO MODE ENABLED - Using curated showcase items")
+            loadPromoItems()
+        } else {
             loadArtwork()
         }
     }

@@ -16,7 +16,6 @@ This is an early alpha release for testing. Expect bugs and incomplete features!
 ### Added
 
 -   GitHub Actions CI/CD workflow
--   Dependabot for automated dependency updates
 -   Issue and PR templates
 -   CONTRIBUTING.md guide
 -   EditorConfig for consistent code formatting
