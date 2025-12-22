@@ -38,14 +38,28 @@ jobs:
           body: |
             ## Changes in this Release
 
-            See [CHANGELOG.md](CHANGELOG.md) for details.
+            See [CHANGELOG.md](https://github.com/willbeeching/flix/blob/master/CHANGELOG.md) for full details.
 
             ## Installation
 
-            Download the APK below and install on your Android TV device.
+            1. Download the APK below
+            2. Transfer it to your Android TV device
+            3. Enable "Install from Unknown Sources" in Settings
+            4. Install the APK
+            5. Follow the in-app setup guide
 
-            **Note**: You may need to enable "Install from Unknown Sources" in your device settings.
+            ## First-Time Setup
+
+            1. Open Flix and click "Connect to Plex"
+            2. Scan the QR code with your phone
+            3. Authorize the app in your browser
+            4. Select your Plex server and libraries
+            5. (Optional) Configure API keys for enhanced artwork in API Settings
+
+            ## Support
+
+            Report issues: https://github.com/willbeeching/flix/issues
           draft: false
-          prerelease: false
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
