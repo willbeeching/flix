@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2-alpha] - 2025-12-30
+
+### Added
+
+-   Version number display on main screen
+-   Connection testing for Plex servers to find working URI
+-   BuildConfig flag to control Flix logo visibility (debug vs release builds)
+
+### Fixed
+
+-   APK signing - releases are now properly signed and installable
+-   DNS resolution errors for .plex.direct hostnames on Android TV
+-   Connection timeouts (5s connect, 10s read/write) prevent hanging
+-   Android TV screensaver settings navigation fallback
+-   Connection now prefers direct IP addresses over .plex.direct hostnames
+
+### Known Issues
+
+-   Manual navigation may be required for screensaver settings on some Android TV devices
+
+## [0.1.1-alpha] - 2025-12-30
+
+### Fixed
+
+-   Initial APK signing configuration for GitHub Actions
+
 ## [0.1.0-alpha] - 2025-12-22
 
 **⚠️ ALPHA RELEASE - FOR TESTING ONLY**
