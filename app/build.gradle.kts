@@ -13,8 +13,8 @@ android {
         targetSdk = 34
 
         // Version - Update these for each release (also update CHANGELOG.md)
-        versionCode = 1
-        versionName = "0.1.0-alpha"
+        versionCode = 2
+        versionName = "0.1.2-alpha"
 
         // Enable build config fields
         buildConfigField("String", "VERSION_NAME", "\"${versionName}\"")

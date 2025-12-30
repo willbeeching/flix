@@ -25,6 +25,9 @@ class PlexApiClient(private val authToken: String) {
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
+        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
         .apply {
             // Trust all certificates (needed for local Plex servers with self-signed certs)
             try {
@@ -153,31 +156,75 @@ class PlexApiClient(private val authToken: String) {
             val servers = resources
                 .filter { it.provides?.contains("server") == true && it.owned }
                 .mapNotNull { resource ->
-                    // Prefer local connections, then https, then http
-                    val connection = resource.connections
-                        ?.sortedWith(
+                    if (resource.accessToken == null || resource.clientIdentifier == null || resource.connections.isNullOrEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    // Sort connections: prefer local, then https, then http
+                    // Also prefer direct IP addresses over .plex.direct hostnames
+                    val sortedConnections = resource.connections
+                        .sortedWith(
                             compareByDescending<Connection> { it.local }
                                 .thenByDescending { it.protocol == "https" }
+                                .thenByDescending { !it.uri.contains(".plex.direct") } // Prefer direct IPs
                         )
-                        ?.firstOrNull()
 
-                    if (connection != null && resource.accessToken != null && resource.clientIdentifier != null) {
+                    Log.d(TAG, "Server ${resource.name} has ${sortedConnections.size} connections:")
+                    sortedConnections.forEach { conn ->
+                        Log.d(TAG, "  - ${conn.uri} (local=${conn.local}, relay=${conn.relay})")
+                    }
+
+                    // Test each connection until we find one that works
+                    var workingConnection: Connection? = null
+                    for (connection in sortedConnections) {
+                        if (testConnection(connection.uri, resource.accessToken)) {
+                            Log.d(TAG, "✓ Connection successful: ${connection.uri}")
+                            workingConnection = connection
+                            break
+                        } else {
+                            Log.w(TAG, "✗ Connection failed: ${connection.uri}")
+                        }
+                    }
+
+                    if (workingConnection != null) {
                         PlexServer(
                             name = resource.name,
                             clientIdentifier = resource.clientIdentifier,
-                            uri = connection.uri,
+                            uri = workingConnection.uri,
                             accessToken = resource.accessToken
                         )
                     } else {
+                        Log.e(TAG, "✗ No working connections found for server: ${resource.name}")
                         null
                     }
                 }
 
-            Log.d(TAG, "Discovered ${servers.size} servers")
+            Log.d(TAG, "Discovered ${servers.size} servers with working connections")
             Result.success(servers)
         } catch (e: Exception) {
             Log.e(TAG, "Error discovering servers", e)
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Test if a connection to a Plex server URI is working
+     */
+    private fun testConnection(uri: String, accessToken: String): Boolean {
+        return try {
+            val testUrl = "$uri/?X-Plex-Token=$accessToken"
+            val request = Request.Builder()
+                .url(testUrl)
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+            val success = response.isSuccessful
+            response.close()
+            success
+        } catch (e: Exception) {
+            Log.d(TAG, "Connection test failed for $uri: ${e.message}")
+            false
         }
     }
 
@@ -187,6 +234,8 @@ class PlexApiClient(private val authToken: String) {
     suspend fun getLibrarySections(server: PlexServer): Result<List<LibrarySection>> {
         return try {
             val url = "${server.uri}/library/sections?X-Plex-Token=${server.accessToken}"
+            Log.d(TAG, "Fetching library sections from: ${server.uri}")
+            
             val request = Request.Builder()
                 .url(url)
                 .get()
@@ -196,7 +245,9 @@ class PlexApiClient(private val authToken: String) {
             val responseBody = response.body?.string()
 
             if (!response.isSuccessful || responseBody == null) {
-                return Result.failure(Exception("Failed to get library sections: ${response.code}"))
+                val errorMsg = "Failed to get library sections: ${response.code} ${response.message}"
+                Log.e(TAG, errorMsg)
+                return Result.failure(Exception(errorMsg))
             }
 
             // Parse XML
@@ -204,8 +255,9 @@ class PlexApiClient(private val authToken: String) {
             Log.d(TAG, "Found ${sections.size} library sections")
             Result.success(sections)
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting library sections", e)
-            Result.failure(e)
+            val errorMsg = "Error connecting to ${server.uri}: ${e.message}"
+            Log.e(TAG, errorMsg, e)
+            Result.failure(Exception(errorMsg, e))
         }
     }
 

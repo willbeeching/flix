@@ -71,15 +71,28 @@ class MainActivity : ComponentActivity() {
 
     private fun openScreensaverSettings() {
         try {
-            // Open Android's screensaver settings
-            startActivity(Intent(Settings.ACTION_DREAM_SETTINGS))
+            // Try to open Android's screensaver settings
+            val intent = Intent(Settings.ACTION_DREAM_SETTINGS)
+            startActivity(intent)
         } catch (e: Exception) {
-            // Emulator may not have these settings, show a message instead
-            android.widget.Toast.makeText(
-                this,
-                "Screensaver settings not available on this device. Use the Preview button instead!",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+            // On Android TV, dream settings may not be available via direct intent
+            // Try opening general settings instead
+            try {
+                val settingsIntent = Intent(Settings.ACTION_SETTINGS)
+                startActivity(settingsIntent)
+                android.widget.Toast.makeText(
+                    this,
+                    "Navigate to: Device Preferences → Screen saver → Current screen saver → Flix",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            } catch (e2: Exception) {
+                // If even settings doesn't work, show helpful message
+                android.widget.Toast.makeText(
+                    this,
+                    "Please manually enable: Settings → Device Preferences → Screen saver → Flix",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
@@ -537,6 +550,18 @@ fun MainScreen(
                         fontFamily = GoogleSansFontFamily
                     )
                 }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Version number
+                Text(
+                    text = "v${com.willbeeching.flix.BuildConfig.VERSION_NAME}",
+                    fontSize = 12.sp,
+                    fontFamily = GoogleSansFontFamily,
+                    color = subtextColor.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
                     }
                 }
             }
@@ -687,6 +712,18 @@ fun MainScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Version number
+                        Text(
+                            text = "v${com.willbeeching.flix.BuildConfig.VERSION_NAME}",
+                            fontSize = 12.sp,
+                            fontFamily = GoogleSansFontFamily,
+                            color = subtextColor.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }
