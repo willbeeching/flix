@@ -44,14 +44,6 @@ android {
         // }
     }
 
-    // Temporary: Use debug signing for alpha releases
-    // TODO: Replace with proper release signing before production
-    applicationVariants.all {
-        if (buildType.name == "release") {
-            signingConfig = signingConfigs.getByName("debug")
-        }
-    }
-
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -66,8 +58,9 @@ android {
             isShrinkResources = true
             isDebuggable = false
             buildConfigField("boolean", "SHOW_FLIX_LOGO", "false")  // Hide Flix logo in release
-            // Signing handled by applicationVariants block below for now
-            // signingConfig = signingConfigs.getByName("release")  // Uncomment when signing config is set
+            // Temporary: Use debug signing for alpha releases
+            // TODO: Replace with proper release keystore before production
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
