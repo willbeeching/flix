@@ -1,7 +1,6 @@
 # Flix - A Plex powered, Netflix inspired screensaver for Android TV
 
 [![Android CI](https://github.com/willbeeching/flix/workflows/Android%20CI/badge.svg)](https://github.com/willbeeching/flix/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Android%205.0%2B-green.svg)](https://android.com)
 [![Language](https://img.shields.io/badge/Language-Kotlin-purple.svg)](https://kotlinlang.org)
 
