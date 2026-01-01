@@ -65,10 +65,38 @@ For the best artwork quality, add API keys:
 
 ### 4. Set as Screensaver
 
+**Standard Method (Most Android TV Devices):**
+
 1. Tap **Set as Screensaver** from the main menu
 2. Select "Flix" from the screensaver list
 3. Configure your timeout preferences
 4. Enjoy beautiful artwork from your library!
+
+**Alternative Method (Google TV Streamer 4K, Chromecast with Google TV, etc):**
+
+Some devices don't show third-party screensavers in settings. Use ADB instead:
+
+```bash
+# Connect to your device
+adb connect YOUR_DEVICE_IP
+
+# Set Flix as screensaver
+adb shell settings put secure screensaver_components com.willbeeching.flix/.service.PlexScreensaverService
+
+# Enable screensaver
+adb shell settings put secure screensaver_enabled 1
+
+# Set it to activate on sleep
+adb shell settings put secure screensaver_activate_on_sleep 1
+
+# Verify it's set (should show: com.willbeeching.flix/.service.PlexScreensaverService)
+adb shell settings get secure screensaver_components
+```
+
+To test immediately:
+```bash
+adb shell am start -n com.android.dreams/.Somnambulator
+```
 
 ### Main Screens
 
@@ -244,6 +272,17 @@ All screens use consistent styling defined in:
 -   SSL bypass only for local Plex servers with self-signed certificates
 
 ## Troubleshooting
+
+### Screensaver not appearing in settings
+
+Some Android TV devices (Google TV Streamer 4K, Chromecast with Google TV) only show the Ambient/Google Photos screensaver by default. Use the ADB method in the installation section above to set Flix as your screensaver.
+
+**Common error:** `Error: Activity class {...PlexScreensaverService} does not exist`
+
+This happens when trying to launch the screensaver as an activity. Use the correct command:
+```bash
+adb shell settings put secure screensaver_components com.willbeeching.flix/.service.PlexScreensaverService
+```
 
 ### No artwork showing
 
