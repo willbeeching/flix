@@ -284,6 +284,23 @@ This happens when trying to launch the screensaver as an activity. Use the corre
 adb shell settings put secure screensaver_components com.willbeeching.flix/.service.PlexScreensaverService
 ```
 
+### Server not found
+
+If your Plex server isn't showing up in the server list:
+
+1. **Check Plex server status** - Ensure your server is running and signed in to Plex.tv
+2. **Network connectivity** - Verify your Android TV can access your network
+3. **Server visibility** - Check that your server is accessible remotely in Plex settings
+4. **Firewall/Router** - Ensure ports aren't blocked between devices
+5. **Connection indicators** - The app now shows connection status for each server:
+   - ✓ Direct connection (green) - Best option, local network
+   - ✓ Relay connection (orange) - Working through Plex relay
+   - ⚠ Connection unverified (orange) - Try selecting anyway
+   - ✗ Connection failed (red) - Connection test failed
+6. **Retry** - Use the Retry button if servers don't appear initially
+
+**Recent improvements:** The app now includes relay connections and shows all discovered servers even if the initial connection test fails, giving you more chances to connect successfully.
+
 ### No artwork showing
 
 1. Verify you're signed in (check main screen status)

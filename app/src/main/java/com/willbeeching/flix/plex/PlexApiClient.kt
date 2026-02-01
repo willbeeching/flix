@@ -25,9 +25,9 @@ class PlexApiClient(private val authToken: String) {
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
-        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .apply {
             // Trust all certificates (needed for local Plex servers with self-signed certs)
             try {
@@ -94,8 +94,16 @@ class PlexApiClient(private val authToken: String) {
         val name: String,
         val clientIdentifier: String,
         val uri: String,
-        val accessToken: String
+        val accessToken: String,
+        val connectionStatus: ConnectionStatus = ConnectionStatus.VERIFIED,
+        val isRelay: Boolean = false
     )
+
+    enum class ConnectionStatus {
+        VERIFIED,       // Connection tested and working
+        UNVERIFIED,     // Connection not tested, may or may not work
+        FAILED          // All connections failed during testing
+    }
 
     data class LibrarySection(
         val id: String,
@@ -118,11 +126,13 @@ class PlexApiClient(private val authToken: String) {
 
     /**
      * Discover available Plex servers
+     * Now includes relay connections and shows servers even if connection test fails
      */
     suspend fun discoverServers(): Result<List<PlexServer>> {
         return try {
+            // Include relay connections (was previously disabled with includeRelay=0)
             val request = Request.Builder()
-                .url("$PLEX_TV_BASE/api/v2/resources?includeHttps=1&includeRelay=0")
+                .url("$PLEX_TV_BASE/api/v2/resources?includeHttps=1&includeRelay=1")
                 .get()
                 .addHeader("X-Plex-Token", authToken)
                 .addHeader("X-Plex-Client-Identifier", "com.willbeeching.flix")
@@ -152,54 +162,91 @@ class PlexApiClient(private val authToken: String) {
             val resources = adapter.fromJson(responseBody)
                 ?: return Result.failure(Exception("Failed to parse resources"))
 
-            // Filter for servers and create PlexServer objects
-            val servers = resources
-                .filter { it.provides?.contains("server") == true && it.owned }
-                .mapNotNull { resource ->
-                    if (resource.accessToken == null || resource.clientIdentifier == null || resource.connections.isNullOrEmpty()) {
-                        return@mapNotNull null
-                    }
+            Log.d(TAG, "Found ${resources.size} total resources from Plex.tv")
 
-                    // Sort connections: prefer local, then https, then http
-                    // Also prefer direct IP addresses over .plex.direct hostnames
-                    val sortedConnections = resource.connections
-                        .sortedWith(
-                            compareByDescending<Connection> { it.local }
-                                .thenByDescending { it.protocol == "https" }
-                                .thenByDescending { !it.uri.contains(".plex.direct") } // Prefer direct IPs
-                        )
+            // Filter for servers (both owned and shared)
+            val serverResources = resources.filter { it.provides?.contains("server") == true }
+            Log.d(TAG, "Found ${serverResources.size} servers (filtering for 'owned' or accessible)")
 
-                    Log.d(TAG, "Server ${resource.name} has ${sortedConnections.size} connections:")
-                    sortedConnections.forEach { conn ->
-                        Log.d(TAG, "  - ${conn.uri} (local=${conn.local}, relay=${conn.relay})")
-                    }
+            // Create PlexServer objects
+            val servers = serverResources.mapNotNull { resource ->
+                if (resource.accessToken == null || resource.clientIdentifier == null) {
+                    Log.w(TAG, "⚠ Server ${resource.name} missing accessToken or clientIdentifier")
+                    return@mapNotNull null
+                }
 
-                    // Test each connection until we find one that works
-                    var workingConnection: Connection? = null
-                    for (connection in sortedConnections) {
-                        if (testConnection(connection.uri, resource.accessToken)) {
-                            Log.d(TAG, "✓ Connection successful: ${connection.uri}")
-                            workingConnection = connection
-                            break
-                        } else {
-                            Log.w(TAG, "✗ Connection failed: ${connection.uri}")
-                        }
-                    }
+                if (resource.connections.isNullOrEmpty()) {
+                    Log.w(TAG, "⚠ Server ${resource.name} has no connection URIs available")
+                    // Still show it but mark as FAILED
+                    return@mapNotNull PlexServer(
+                        name = resource.name,
+                        clientIdentifier = resource.clientIdentifier,
+                        uri = "unknown",
+                        accessToken = resource.accessToken,
+                        connectionStatus = ConnectionStatus.FAILED,
+                        isRelay = false
+                    )
+                }
 
-                    if (workingConnection != null) {
-                        PlexServer(
-                            name = resource.name,
-                            clientIdentifier = resource.clientIdentifier,
-                            uri = workingConnection.uri,
-                            accessToken = resource.accessToken
-                        )
+                // Sort connections: prefer local, then https, then http
+                // Also prefer direct IP addresses over .plex.direct hostnames
+                val sortedConnections = resource.connections
+                    .sortedWith(
+                        compareByDescending<Connection> { it.local }
+                            .thenByDescending { !it.relay } // Prefer direct over relay
+                            .thenByDescending { it.protocol == "https" }
+                            .thenByDescending { !it.uri.contains(".plex.direct") } // Prefer direct IPs
+                    )
+
+                Log.d(TAG, "Server ${resource.name} has ${sortedConnections.size} connections:")
+                sortedConnections.forEach { conn ->
+                    Log.d(TAG, "  - ${conn.uri} (local=${conn.local}, relay=${conn.relay}, ipv6=${conn.ipv6})")
+                }
+
+                // Test each connection until we find one that works
+                var workingConnection: Connection? = null
+                for (connection in sortedConnections) {
+                    if (testConnection(connection.uri, resource.accessToken)) {
+                        Log.d(TAG, "✓ Connection successful: ${connection.uri}")
+                        workingConnection = connection
+                        break
                     } else {
-                        Log.e(TAG, "✗ No working connections found for server: ${resource.name}")
-                        null
+                        Log.w(TAG, "✗ Connection failed: ${connection.uri}")
                     }
                 }
 
-            Log.d(TAG, "Discovered ${servers.size} servers with working connections")
+                // NEW: Return server even if no working connection found
+                // This allows users to try connecting anyway
+                if (workingConnection != null) {
+                    PlexServer(
+                        name = resource.name,
+                        clientIdentifier = resource.clientIdentifier,
+                        uri = workingConnection.uri,
+                        accessToken = resource.accessToken,
+                        connectionStatus = ConnectionStatus.VERIFIED,
+                        isRelay = workingConnection.relay
+                    )
+                } else {
+                    // Use first available connection as fallback
+                    val fallbackConnection = sortedConnections.first()
+                    Log.w(TAG, "⚠ No verified connections for ${resource.name}, using fallback: ${fallbackConnection.uri}")
+                    PlexServer(
+                        name = resource.name,
+                        clientIdentifier = resource.clientIdentifier,
+                        uri = fallbackConnection.uri,
+                        accessToken = resource.accessToken,
+                        connectionStatus = ConnectionStatus.UNVERIFIED,
+                        isRelay = fallbackConnection.relay
+                    )
+                }
+            }
+
+            Log.d(TAG, "Discovered ${servers.size} servers total")
+            Log.d(TAG, "  - ${servers.count { it.connectionStatus == ConnectionStatus.VERIFIED }} verified")
+            Log.d(TAG, "  - ${servers.count { it.connectionStatus == ConnectionStatus.UNVERIFIED }} unverified")
+            Log.d(TAG, "  - ${servers.count { it.connectionStatus == ConnectionStatus.FAILED }} failed")
+            Log.d(TAG, "  - ${servers.count { it.isRelay }} using relay")
+            
             Result.success(servers)
         } catch (e: Exception) {
             Log.e(TAG, "Error discovering servers", e)

@@ -246,6 +246,13 @@ fun ServerItem(
     val textColor = Color.White
     val subtextColor = Color.White.copy(alpha = 0.6f)
 
+    // Status indicator color
+    val statusColor = when (server.connectionStatus) {
+        PlexApiClient.ConnectionStatus.VERIFIED -> if (server.isRelay) Color(0xFFFFA726) else Color(0xFF00E676)
+        PlexApiClient.ConnectionStatus.UNVERIFIED -> Color(0xFFFFA726)
+        PlexApiClient.ConnectionStatus.FAILED -> Color(0xFFFF453A)
+    }
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -255,18 +262,33 @@ fun ServerItem(
         color = backgroundColor
     ) {
         Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+            modifier = Modifier.fillMaxSize()
         ) {
+            // Status dot indicator on left
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(statusColor, shape = androidx.compose.foundation.shape.CircleShape)
+                )
+            }
+
+            // Server name centered
             Text(
                 text = server.name,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = GoogleSansFontFamily,
                 color = textColor,
-                letterSpacing = 0.5.sp
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.align(Alignment.Center)
             )
 
+            // Selected checkmark on right
             if (isSelected) {
                 Box(
                     modifier = Modifier

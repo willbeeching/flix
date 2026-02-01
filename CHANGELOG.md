@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3-alpha] - 2026-02-01
+
+### Added
+
+-   Connection status indicators in server selection (colored dots)
+-   Relay connection support (previously disabled)
+-   Enhanced diagnostic logging for server discovery
+
+### Changed
+
+-   Increased connection timeout from 5s to 15s for better reliability
+-   Server discovery now includes relay connections (`includeRelay=1`)
+-   Servers with failed connection tests are now shown with status indicators
+-   Server list displays connection status via colored dots (green/orange/red)
+
+### Fixed
+
+-   Server discovery issues for users behind complex NAT/firewall setups
+-   Servers not appearing when only relay connections available
+-   Connection timeout too short for slower networks
+-   Improved error handling when server discovery fails
+
 ## [0.1.2-alpha] - 2025-12-30
 
 ### Added
