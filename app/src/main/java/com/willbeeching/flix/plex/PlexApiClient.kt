@@ -188,17 +188,29 @@ class PlexApiClient(private val authToken: String) {
                     )
                 }
 
-                // Sort connections: prefer local, then https, then http
-                // Also prefer direct IP addresses over .plex.direct hostnames
-                val sortedConnections = resource.connections
-                    .sortedWith(
-                        compareByDescending<Connection> { it.local }
-                            .thenByDescending { !it.relay } // Prefer direct over relay
-                            .thenByDescending { it.protocol == "https" }
-                            .thenByDescending { !it.uri.contains(".plex.direct") } // Prefer direct IPs
-                    )
+                // CRITICAL: Avoid .plex.direct hostnames due to DNS resolution issues on Android TV
+                // Separate connections into direct IPs and plex.direct hostnames
+                val (directIpConnections, plexDirectConnections) = resource.connections.partition { 
+                    !it.uri.contains(".plex.direct") 
+                }
 
-                Log.d(TAG, "Server ${resource.name} has ${sortedConnections.size} connections:")
+                // Sort both groups: prefer local, non-relay, https
+                val sortDirectIps = directIpConnections.sortedWith(
+                    compareByDescending<Connection> { it.local }
+                        .thenByDescending { !it.relay }
+                        .thenByDescending { it.protocol == "https" }
+                )
+                
+                val sortPlexDirect = plexDirectConnections.sortedWith(
+                    compareByDescending<Connection> { it.local }
+                        .thenByDescending { !it.relay }
+                        .thenByDescending { it.protocol == "https" }
+                )
+
+                // Try direct IPs first, then plex.direct as last resort
+                val sortedConnections = sortDirectIps + sortPlexDirect
+
+                Log.d(TAG, "Server ${resource.name} has ${sortedConnections.size} connections (${directIpConnections.size} direct IP, ${plexDirectConnections.size} .plex.direct):")
                 sortedConnections.forEach { conn ->
                     Log.d(TAG, "  - ${conn.uri} (local=${conn.local}, relay=${conn.relay}, ipv6=${conn.ipv6})")
                 }
@@ -215,8 +227,7 @@ class PlexApiClient(private val authToken: String) {
                     }
                 }
 
-                // NEW: Return server even if no working connection found
-                // This allows users to try connecting anyway
+                // Return server even if no working connection found
                 if (workingConnection != null) {
                     PlexServer(
                         name = resource.name,
@@ -227,7 +238,7 @@ class PlexApiClient(private val authToken: String) {
                         isRelay = workingConnection.relay
                     )
                 } else {
-                    // Use first available connection as fallback
+                    // Use first available connection as fallback (prefer direct IP)
                     val fallbackConnection = sortedConnections.first()
                     Log.w(TAG, "⚠ No verified connections for ${resource.name}, using fallback: ${fallbackConnection.uri}")
                     PlexServer(
@@ -302,7 +313,14 @@ class PlexApiClient(private val authToken: String) {
             Log.d(TAG, "Found ${sections.size} library sections")
             Result.success(sections)
         } catch (e: Exception) {
-            val errorMsg = "Error connecting to ${server.uri}: ${e.message}"
+            // Provide helpful error message for .plex.direct DNS issues
+            val errorMsg = if (server.uri.contains(".plex.direct") && 
+                              (e is java.net.UnknownHostException || e.message?.contains("resolve") == true)) {
+                "DNS resolution failed for .plex.direct hostname. This is a known Android TV issue. " +
+                "Try ensuring your Plex server has a direct local IP connection available, or restart your router/Plex server."
+            } else {
+                "Error connecting to ${server.uri}: ${e.message}"
+            }
             Log.e(TAG, errorMsg, e)
             Result.failure(Exception(errorMsg, e))
         }
@@ -366,8 +384,16 @@ class PlexApiClient(private val authToken: String) {
             Log.d(TAG, "Loaded ${items.size} artwork items from section (${items.size} of $totalSize total)")
             Result.success(items)
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting artwork", e)
-            Result.failure(e)
+            // Provide helpful error message for .plex.direct DNS issues
+            val errorMsg = if (server.uri.contains(".plex.direct") && 
+                              (e is java.net.UnknownHostException || e.message?.contains("resolve") == true)) {
+                "DNS resolution failed for .plex.direct hostname. This is a known Android TV issue. " +
+                "Please try restarting the app and selecting your server again."
+            } else {
+                "Error getting artwork: ${e.message}"
+            }
+            Log.e(TAG, errorMsg, e)
+            Result.failure(Exception(errorMsg, e))
         }
     }
 

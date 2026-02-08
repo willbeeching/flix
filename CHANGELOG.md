@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+-   Aggressive prioritization of direct IP addresses over .plex.direct hostnames to prevent DNS resolution failures
+-   Improved error messages for .plex.direct DNS issues with troubleshooting guidance
+
 ## [0.1.3-alpha] - 2026-02-01
 
 ### Added
