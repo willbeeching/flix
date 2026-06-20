@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Flix connects to Plex Media Servers on the local network. Plex exposes
+  local servers over plain HTTP (e.g. http://192.168.x.x:32400), and the
+  in-app setup helper runs a local HTTP server on the device's LAN address.
+  Because these are arbitrary private IPs, they cannot be enumerated as
+  individual <domain> entries, so cleartext must be permitted at the base
+  level. All external services (Plex.tv, TMDB, Fanart.tv) are always called
+  over HTTPS by URL scheme, so this does not weaken those connections.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

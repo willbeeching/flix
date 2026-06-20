@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data extraction rules for Android 12 (API 31) and above.
+  Exclude credential stores (Plex auth token and third-party API keys) from
+  both cloud backups and device-to-device transfers.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="plex_auth.xml" />
+        <exclude domain="sharedpref" path="api_keys.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="plex_auth.xml" />
+        <exclude domain="sharedpref" path="api_keys.xml" />
+    </device-transfer>
+</data-extraction-rules>

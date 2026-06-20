@@ -261,7 +261,8 @@ All screens use consistent styling defined in:
 
 ## Privacy & Security
 
--   Auth tokens stored in encrypted SharedPreferences
+-   Auth tokens and API keys stored in app-private storage (not readable by other apps)
+-   Credentials excluded from cloud backups and device-to-device transfers
 -   API keys validated before storage
 -   No data sent to third parties
 -   Direct communication between device and Plex/API services
@@ -354,6 +355,8 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduc
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+Bundled fonts use **Google Sans Flex**, licensed under the SIL Open Font License 1.1 - see [licenses/GoogleSansFlex-OFL.txt](licenses/GoogleSansFlex-OFL.txt).
 
 ## Disclaimer
 

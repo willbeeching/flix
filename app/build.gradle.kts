@@ -5,43 +5,54 @@ plugins {
 
 android {
     namespace = "com.willbeeching.flix"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.willbeeching.flix"
         minSdk = 21
-        targetSdk = 34
+        targetSdk = 35
 
         // Version - Update these for each release (also update CHANGELOG.md)
-        versionCode = 4
-        versionName = "0.1.4-alpha"
+        versionCode = 5
+        versionName = "0.1.5-alpha"
 
         // Enable build config fields
         buildConfigField("String", "VERSION_NAME", "\"${versionName}\"")
         buildConfigField("int", "VERSION_CODE", "${versionCode}")
     }
 
-    signingConfigs {
-        // For release builds, configure your signing key:
-        // 1. Create a keystore: keytool -genkey -v -keystore flix-release.jks ...
-        // 2. Add to local.properties (not committed):
-        //    RELEASE_STORE_FILE=/path/to/flix-release.jks
-        //    RELEASE_STORE_PASSWORD=your_store_password
-        //    RELEASE_KEY_ALIAS=your_key_alias
-        //    RELEASE_KEY_PASSWORD=your_key_password
-        // 3. Uncomment the signing config below
+    // Load release signing credentials from local.properties (preferred) or
+    // environment variables (CI). Never commit the keystore or these values.
+    //
+    // local.properties (not committed):
+    //   RELEASE_STORE_FILE=/path/to/flix-release.jks
+    //   RELEASE_STORE_PASSWORD=your_store_password
+    //   RELEASE_KEY_ALIAS=your_key_alias
+    //   RELEASE_KEY_PASSWORD=your_key_password
+    //
+    // Generate a keystore with:
+    //   keytool -genkey -v -keystore flix-release.jks -keyalg RSA -keysize 2048 \
+    //     -validity 10000 -alias flix
+    val releaseProps = java.util.Properties().apply {
+        val localProperties = rootProject.file("local.properties")
+        if (localProperties.exists()) {
+            localProperties.inputStream().use { load(it) }
+        }
+    }
+    fun releaseProp(name: String): String? =
+        releaseProps.getProperty(name) ?: System.getenv(name)
 
-        // create("release") {
-        //     val properties = java.util.Properties()
-        //     val localProperties = rootProject.file("local.properties")
-        //     if (localProperties.exists()) {
-        //         localProperties.inputStream().use { properties.load(it) }
-        //     }
-        //     storeFile = file(properties.getProperty("RELEASE_STORE_FILE") ?: "release.jks")
-        //     storePassword = properties.getProperty("RELEASE_STORE_PASSWORD")
-        //     keyAlias = properties.getProperty("RELEASE_KEY_ALIAS")
-        //     keyPassword = properties.getProperty("RELEASE_KEY_PASSWORD")
-        // }
+    val hasReleaseSigning = releaseProp("RELEASE_STORE_FILE") != null
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseProp("RELEASE_STORE_FILE")!!)
+                storePassword = releaseProp("RELEASE_STORE_PASSWORD")
+                keyAlias = releaseProp("RELEASE_KEY_ALIAS")
+                keyPassword = releaseProp("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -58,9 +69,15 @@ android {
             isShrinkResources = true
             isDebuggable = false
             buildConfigField("boolean", "SHOW_FLIX_LOGO", "false")  // Hide Flix logo in release
-            // Temporary: Use debug signing for alpha releases
-            // TODO: Replace with proper release keystore before production
-            signingConfig = signingConfigs.getByName("debug")
+            // Use the real release keystore when configured (local.properties / CI env).
+            // Falls back to debug signing only when no release keystore is present
+            // (e.g. local debug builds) so the build never breaks; Play Store
+            // uploads MUST be produced with the release keystore configured.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

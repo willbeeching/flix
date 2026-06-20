@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup rules for Android 11 (API 30) and below.
+  Exclude credential stores (Plex auth token and third-party API keys) from
+  cloud/device backups so secrets are not copied off-device.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="plex_auth.xml" />
+    <exclude domain="sharedpref" path="api_keys.xml" />
+</full-backup-content>

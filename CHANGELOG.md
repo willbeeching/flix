@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5-alpha] - 2026-06-20
+
+### Changed
+
+-   Raised `targetSdk`/`compileSdk` to 35 (Android 15) to meet Google Play requirements
+-   Upgraded Android Gradle Plugin to 8.7.2 and Gradle wrapper to 8.9
+-   Replaced bundled fonts with the open-source Google Sans Flex (SIL Open Font License); reduced app size by ~7.6 MB
+
+### Added
+
+-   Release signing configuration sourced from `local.properties` / CI environment (no secrets committed)
+-   Network security config permitting cleartext only for local Plex servers (fixes direct-IP `http://` LAN connections that were silently blocked)
+-   Backup and data-extraction rules that exclude the Plex auth token and API keys from cloud backups and device transfers
+-   CI now also builds a release App Bundle (`.aab`) for Play Store uploads
+
+### Security
+
+-   Credential stores (`plex_auth`, `api_keys`) are now excluded from device/cloud backups
+
 ## [0.1.4-alpha] - 2026-02-01
 
 ### Fixed

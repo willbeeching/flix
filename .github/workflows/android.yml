@@ -2,7 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches: [master, main]
+    # NOTE: the play-store-readiness branch is included temporarily so the
+    # toolchain/SDK changes get verified by CI. Remove before/at merge.
+    branches: [master, main, claude/play-store-readiness-udmx57]
   pull_request:
     branches: [master, main]
 
@@ -32,11 +34,20 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
+      - name: Build Release App Bundle (AAB)
+        run: ./gradlew bundleRelease
+
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: app/build/outputs/apk/release/*.apk
+
+      - name: Upload Release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-aab
+          path: app/build/outputs/bundle/release/*.aab
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
