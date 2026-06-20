@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -33,7 +35,7 @@ android {
     // Generate a keystore with:
     //   keytool -genkey -v -keystore flix-release.jks -keyalg RSA -keysize 2048 \
     //     -validity 10000 -alias flix
-    val releaseProps = java.util.Properties().apply {
+    val releaseProps = Properties().apply {
         val localProperties = rootProject.file("local.properties")
         if (localProperties.exists()) {
             localProperties.inputStream().use { load(it) }
