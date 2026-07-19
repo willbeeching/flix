@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5-alpha] - 2026-07-19
+
 ### Fixed
 
 -   Critical: Cold-start server discovery took 45-90s because `discoverServers()` tested every connection candidate for every server one at a time, each with a 15s timeout - on a 3-server account this meant every unreachable LAN/Docker address on every server on the account cost a full serial 15s
