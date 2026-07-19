@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6-alpha] - 2026-07-19
+
+### Fixed
+
+-   The backdrop pan no longer stops partway through a slide: it runs on its own `ObjectAnimator` instead of sharing the view's `ViewPropertyAnimator` with the crossfade (whose `setDuration` could retroactively shorten it), and its duration now derives from the real slide period rather than a stale `ROTATION_INTERVAL_MS` constant that had stopped governing rotation
+-   Pan now runs one crossfade longer than a slide is on screen, so motion is still going as the image swaps out
+
+### Changed
+
+-   Release branding is opt-in via `flix.showLogo` in `local.properties` (gitignored, defaults to false), so public releases ship unbranded without anyone having to remember to flip a build flag back
+
 ## [0.1.5-alpha] - 2026-07-19
 
 ### Fixed
