@@ -1,6 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// Opt-in branding for personal release builds — see the release buildType below.
+val showFlixLogoInRelease: Boolean = run {
+    val props = Properties()
+    val localProperties = rootProject.file("local.properties")
+    if (localProperties.exists()) {
+        localProperties.inputStream().use { props.load(it) }
+    }
+    props.getProperty("flix.showLogo")?.toBoolean() ?: false
 }
 
 android {
@@ -57,7 +69,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-            buildConfigField("boolean", "SHOW_FLIX_LOGO", "false")  // Hide Flix logo in release
+            // Public releases ship unbranded. Personal builds can keep the mark by
+            // putting `flix.showLogo=true` in local.properties (gitignored) — so the
+            // committed default is always false and no one has to remember to flip a
+            // flag back before tagging a release.
+            buildConfigField("boolean", "SHOW_FLIX_LOGO", showFlixLogoInRelease.toString())
             // Temporary: Use debug signing for alpha releases
             // TODO: Replace with proper release keystore before production
             signingConfig = signingConfigs.getByName("debug")
