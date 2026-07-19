@@ -139,5 +139,9 @@ dependencies {
 
     // QR Code generation
     implementation("com.google.zxing:core:3.5.2")
+
+    // Unit tests (pure JVM - no device/emulator needed)
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }
 

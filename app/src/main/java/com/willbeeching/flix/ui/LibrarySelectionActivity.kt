@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -74,6 +75,7 @@ fun LibrarySelectionScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
+    val appContext = LocalContext.current.applicationContext
 
     // Load libraries on launch
     LaunchedEffect(Unit) {
@@ -90,7 +92,7 @@ fun LibrarySelectionScreen(
                     return@launch
                 }
 
-                val apiClient = PlexApiClient(authToken)
+                val apiClient = PlexApiClient(authToken, appContext)
 
                 // Discover servers and find the selected one
                 val serversResult = apiClient.discoverServers()

@@ -1,27 +1,52 @@
 package com.willbeeching.flix.plex
 
+import android.content.Context
 import android.util.Log
 import android.util.Xml
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.xmlpull.v1.XmlPullParser
+import java.io.IOException
 import java.io.StringReader
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import javax.net.ssl.HostnameVerifier
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Client for interacting with Plex Media Server API
+ *
+ * @param context Optional application context. When supplied, the
+ * last-known-good connection URI for each server is cached (see
+ * [ServerConnectionCache]) and tried first on the next [discoverServers]
+ * call. Omitting it (existing behavior) simply means every call does a full
+ * concurrent discovery with no cross-restart shortcut.
  */
-class PlexApiClient(private val authToken: String) {
+class PlexApiClient(private val authToken: String, context: Context? = null) {
 
+    private val connectionCache: ServerConnectionCache? = context?.let { ServerConnectionCache(it) }
+
+    // Client used for real data (library listings, artwork, images). Timeouts stay
+    // generous - a slow-but-reachable server fetching a large batch of artwork must
+    // not be cut off at probe-length timeouts.
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
@@ -49,6 +74,19 @@ class PlexApiClient(private val authToken: String) {
             }
         }
         .build()
+
+    // Client used ONLY for discovery probes ("is this candidate reachable at all").
+    // Built via client.newBuilder() so it shares the same Dispatcher (thread pool)
+    // and ConnectionPool as the data client above - we get a much shorter timeout
+    // without spinning up a second pool of connections/threads. A reachable LAN
+    // Plex server answers in tens of milliseconds, so PROBE_TIMEOUT_SECONDS just
+    // needs to comfortably outlast that, not a slow WAN round trip.
+    private val probeClient = client.newBuilder()
+        .connectTimeout(PROBE_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(PROBE_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(PROBE_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
     private val moshi = Moshi.Builder()
         .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
         .build()
@@ -56,6 +94,7 @@ class PlexApiClient(private val authToken: String) {
     companion object {
         private const val TAG = "PlexApiClient"
         private const val PLEX_TV_BASE = "https://plex.tv"
+        private const val PROBE_TIMEOUT_SECONDS = 3L
     }
 
     @JsonClass(generateAdapter = true)
@@ -125,8 +164,26 @@ class PlexApiClient(private val authToken: String) {
     )
 
     /**
-     * Discover available Plex servers
-     * Now includes relay connections and shows servers even if connection test fails
+     * Discover available Plex servers.
+     *
+     * Includes relay connections and shows servers even if connection testing
+     * fails entirely (see [ConnectionStatus]).
+     *
+     * Concurrency: every server is probed in parallel, and within each server
+     * every connection candidate is probed in parallel too (structured
+     * concurrency via [coroutineScope]/[async] + [raceFirstSuccess], which
+     * cancels every losing probe as soon as one candidate succeeds). This
+     * replaces the old fully-sequential loop, which cost
+     * `unreachable candidates x 15s timeout` in a straight line - with three
+     * servers on an account and a couple of unreachable LAN/Docker addresses
+     * from other servers on the account, that alone was 45-90s of dead time
+     * before any artwork could load.
+     *
+     * Each server also gets a fast path: if a previous run cached a working
+     * connection URI for it ([ServerConnectionCache]), that URI is probed
+     * first, and a hit skips discovery for that server entirely. A screensaver
+     * process restarts constantly, so this turns most cold starts into a
+     * single ~tens-of-milliseconds LAN round trip instead of a fresh race.
      */
     suspend fun discoverServers(): Result<List<PlexServer>> {
         return try {
@@ -168,88 +225,25 @@ class PlexApiClient(private val authToken: String) {
             val serverResources = resources.filter { it.provides?.contains("server") == true }
             Log.d(TAG, "Found ${serverResources.size} servers (filtering for 'owned' or accessible)")
 
-            // Create PlexServer objects
-            val servers = serverResources.mapNotNull { resource ->
+            // Cheap, non-blocking, local-only lookup - never a network call.
+            val localNetworkInfo = getLocalNetworkInfo()
+
+            val validResources = serverResources.mapNotNull { resource ->
                 if (resource.accessToken == null || resource.clientIdentifier == null) {
                     Log.w(TAG, "⚠ Server ${resource.name} missing accessToken or clientIdentifier")
-                    return@mapNotNull null
-                }
-
-                if (resource.connections.isNullOrEmpty()) {
-                    Log.w(TAG, "⚠ Server ${resource.name} has no connection URIs available")
-                    // Still show it but mark as FAILED
-                    return@mapNotNull PlexServer(
-                        name = resource.name,
-                        clientIdentifier = resource.clientIdentifier,
-                        uri = "unknown",
-                        accessToken = resource.accessToken,
-                        connectionStatus = ConnectionStatus.FAILED,
-                        isRelay = false
-                    )
-                }
-
-                // CRITICAL: Avoid .plex.direct hostnames due to DNS resolution issues on Android TV
-                // Separate connections into direct IPs and plex.direct hostnames
-                val (directIpConnections, plexDirectConnections) = resource.connections.partition { 
-                    !it.uri.contains(".plex.direct") 
-                }
-
-                // Sort both groups: prefer local, non-relay, https
-                val sortDirectIps = directIpConnections.sortedWith(
-                    compareByDescending<Connection> { it.local }
-                        .thenByDescending { !it.relay }
-                        .thenByDescending { it.protocol == "https" }
-                )
-                
-                val sortPlexDirect = plexDirectConnections.sortedWith(
-                    compareByDescending<Connection> { it.local }
-                        .thenByDescending { !it.relay }
-                        .thenByDescending { it.protocol == "https" }
-                )
-
-                // Try direct IPs first, then plex.direct as last resort
-                val sortedConnections = sortDirectIps + sortPlexDirect
-
-                Log.d(TAG, "Server ${resource.name} has ${sortedConnections.size} connections (${directIpConnections.size} direct IP, ${plexDirectConnections.size} .plex.direct):")
-                sortedConnections.forEach { conn ->
-                    Log.d(TAG, "  - ${conn.uri} (local=${conn.local}, relay=${conn.relay}, ipv6=${conn.ipv6})")
-                }
-
-                // Test each connection until we find one that works
-                var workingConnection: Connection? = null
-                for (connection in sortedConnections) {
-                    if (testConnection(connection.uri, resource.accessToken)) {
-                        Log.d(TAG, "✓ Connection successful: ${connection.uri}")
-                        workingConnection = connection
-                        break
-                    } else {
-                        Log.w(TAG, "✗ Connection failed: ${connection.uri}")
-                    }
-                }
-
-                // Return server even if no working connection found
-                if (workingConnection != null) {
-                    PlexServer(
-                        name = resource.name,
-                        clientIdentifier = resource.clientIdentifier,
-                        uri = workingConnection.uri,
-                        accessToken = resource.accessToken,
-                        connectionStatus = ConnectionStatus.VERIFIED,
-                        isRelay = workingConnection.relay
-                    )
+                    null
                 } else {
-                    // Use first available connection as fallback (prefer direct IP)
-                    val fallbackConnection = sortedConnections.first()
-                    Log.w(TAG, "⚠ No verified connections for ${resource.name}, using fallback: ${fallbackConnection.uri}")
-                    PlexServer(
-                        name = resource.name,
-                        clientIdentifier = resource.clientIdentifier,
-                        uri = fallbackConnection.uri,
-                        accessToken = resource.accessToken,
-                        connectionStatus = ConnectionStatus.UNVERIFIED,
-                        isRelay = fallbackConnection.relay
-                    )
+                    resource
                 }
+            }
+
+            // Probe every server concurrently; each resolveServer() call itself
+            // probes that server's candidates concurrently (or short-circuits on
+            // a cache hit). No server's slowness blocks any other server.
+            val servers = coroutineScope {
+                validResources
+                    .map { resource -> async(Dispatchers.IO) { resolveServer(resource, localNetworkInfo) } }
+                    .awaitAll()
             }
 
             Log.d(TAG, "Discovered ${servers.size} servers total")
@@ -257,7 +251,7 @@ class PlexApiClient(private val authToken: String) {
             Log.d(TAG, "  - ${servers.count { it.connectionStatus == ConnectionStatus.UNVERIFIED }} unverified")
             Log.d(TAG, "  - ${servers.count { it.connectionStatus == ConnectionStatus.FAILED }} failed")
             Log.d(TAG, "  - ${servers.count { it.isRelay }} using relay")
-            
+
             Result.success(servers)
         } catch (e: Exception) {
             Log.e(TAG, "Error discovering servers", e)
@@ -266,25 +260,165 @@ class PlexApiClient(private val authToken: String) {
     }
 
     /**
-     * Test if a connection to a Plex server URI is working
+     * Resolves a single server resource to a [PlexServer]: tries the cached
+     * connection first, then races all candidates concurrently, then falls
+     * back to the best-ordered candidate as UNVERIFIED if nothing answered.
      */
-    private fun testConnection(uri: String, accessToken: String): Boolean {
+    private suspend fun resolveServer(
+        resource: ResourceResponse,
+        localNetworkInfo: LocalNetworkInfo?
+    ): PlexServer {
+        val clientIdentifier = resource.clientIdentifier!!
+        val accessToken = resource.accessToken!!
+
+        if (resource.connections.isNullOrEmpty()) {
+            Log.w(TAG, "⚠ Server ${resource.name} has no connection URIs available")
+            // Still show it but mark as FAILED
+            return PlexServer(
+                name = resource.name,
+                clientIdentifier = clientIdentifier,
+                uri = "unknown",
+                accessToken = accessToken,
+                connectionStatus = ConnectionStatus.FAILED,
+                isRelay = false
+            )
+        }
+
+        val sortedConnections = sortConnections(resource.connections, localNetworkInfo)
+
+        Log.d(TAG, "Server ${resource.name} has ${sortedConnections.size} connections:")
+        sortedConnections.forEach { conn ->
+            Log.d(TAG, "  - ${conn.uri} (local=${conn.local}, relay=${conn.relay}, ipv6=${conn.ipv6})")
+        }
+
+        // Fast path: last-known-good connection from a previous run. A hit
+        // means this server needs exactly one short probe, not a full race.
+        val cachedUri = connectionCache?.getCachedUri(clientIdentifier)
+        if (cachedUri != null) {
+            if (probeConnection(cachedUri, accessToken)) {
+                Log.d(TAG, "✓ Cache hit for ${resource.name}: $cachedUri (discovery skipped)")
+                val cachedConnection = resource.connections.find { it.uri == cachedUri }
+                return PlexServer(
+                    name = resource.name,
+                    clientIdentifier = clientIdentifier,
+                    uri = cachedUri,
+                    accessToken = accessToken,
+                    connectionStatus = ConnectionStatus.VERIFIED,
+                    isRelay = cachedConnection?.relay ?: false
+                )
+            }
+            Log.d(TAG, "✗ Cached connection for ${resource.name} ($cachedUri) failed probe, falling back to full discovery")
+        }
+
+        // Race every candidate concurrently; first success wins, the rest are cancelled.
+        val winner = raceFirstSuccess(sortedConnections) { connection ->
+            if (probeConnection(connection.uri, accessToken)) connection else null
+        }
+
+        return if (winner != null) {
+            Log.d(TAG, "✓ Connection successful: ${winner.uri}")
+            connectionCache?.setCachedUri(clientIdentifier, winner.uri)
+            PlexServer(
+                name = resource.name,
+                clientIdentifier = clientIdentifier,
+                uri = winner.uri,
+                accessToken = accessToken,
+                connectionStatus = ConnectionStatus.VERIFIED,
+                isRelay = winner.relay
+            )
+        } else {
+            // Use first available connection as fallback (best-ordered candidate)
+            val fallbackConnection = sortedConnections.first()
+            Log.w(TAG, "⚠ No verified connections for ${resource.name}, using fallback: ${fallbackConnection.uri}")
+            PlexServer(
+                name = resource.name,
+                clientIdentifier = clientIdentifier,
+                uri = fallbackConnection.uri,
+                accessToken = accessToken,
+                connectionStatus = ConnectionStatus.UNVERIFIED,
+                isRelay = fallbackConnection.relay
+            )
+        }
+    }
+
+    /**
+     * Probes whether a connection URI is reachable, using [probeClient]'s
+     * short timeout - NOT [client]'s generous data timeout. Uses OkHttp's
+     * async `enqueue` (not the blocking `execute()`) via [executeSuspend] so
+     * that cancelling the coroutine (a losing race participant) actually
+     * cancels the in-flight socket/call instead of leaving a thread blocked.
+     */
+    private suspend fun probeConnection(uri: String, accessToken: String): Boolean {
         return try {
-            val testUrl = "$uri/?X-Plex-Token=$accessToken"
             val request = Request.Builder()
-                .url(testUrl)
+                .url("$uri/?X-Plex-Token=$accessToken")
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
+            val response = executeSuspend(probeClient, request)
             val success = response.isSuccessful
             response.close()
             success
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.d(TAG, "Connection test failed for $uri: ${e.message}")
+            Log.d(TAG, "Probe failed for $uri: ${e.message}")
             false
         }
     }
+
+    /**
+     * Cheap, non-blocking, local-only lookup of the device's active IPv4
+     * address and subnet prefix (used only to bias candidate ordering - see
+     * [sortConnections]). Uses [NetworkInterface] enumeration only; performs
+     * no DNS resolution and no network I/O.
+     */
+    private fun getLocalNetworkInfo(): LocalNetworkInfo? {
+        return try {
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            for (netIf in interfaces) {
+                if (!netIf.isUp || netIf.isLoopback) continue
+                for (interfaceAddress in netIf.interfaceAddresses) {
+                    val addr = interfaceAddress.address
+                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                        val ip = addr.hostAddress ?: continue
+                        return LocalNetworkInfo(ip, interfaceAddress.networkPrefixLength.toInt())
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to determine local network info: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Suspends until [request] completes on [okClient], using OkHttp's
+     * asynchronous `enqueue` rather than the blocking `execute()`. Cancelling
+     * the calling coroutine cancels the underlying [Call] - this is what lets
+     * [raceFirstSuccess] actually abort losing probes instead of leaving them
+     * running to their own timeout on a background thread.
+     */
+    private suspend fun executeSuspend(okClient: OkHttpClient, request: Request): Response =
+        suspendCancellableCoroutine { cont ->
+            val call = okClient.newCall(request)
+            cont.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (cont.isCancelled) return
+                    cont.resumeWithException(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (cont.isCancelled) {
+                        response.close()
+                        return
+                    }
+                    cont.resume(response)
+                }
+            })
+        }
 
     /**
      * Get library sections from a Plex server

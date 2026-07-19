@@ -235,7 +235,7 @@ class ScreensaverController(
                 }
 
                 val authToken = authManager.getAuthToken()!!
-                val apiClient = PlexApiClient(authToken)
+                val apiClient = PlexApiClient(authToken, context)
 
                 // Discover servers
                 val serversResult = apiClient.discoverServers()

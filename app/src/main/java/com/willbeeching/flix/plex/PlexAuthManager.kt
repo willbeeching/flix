@@ -19,6 +19,7 @@ import java.util.UUID
 class PlexAuthManager(private val context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val connectionCache = ServerConnectionCache(context)
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
@@ -277,6 +278,8 @@ class PlexAuthManager(private val context: Context) {
             .remove(KEY_SELECTED_SERVER_ID)
             .remove(KEY_SELECTED_LIBRARIES)
             .apply()
+        // A cached connection URI from this account must not leak into the next one.
+        connectionCache.clearAll()
         Log.d(TAG, "User signed out")
     }
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+-   Critical: Cold-start server discovery took 45-90s because `discoverServers()` tested every connection candidate for every server one at a time, each with a 15s timeout - on a 3-server account this meant every unreachable LAN/Docker address on every server on the account cost a full serial 15s
+-   Server discovery now races all servers, and all connection candidates within each server, concurrently (structured concurrency, losers cancelled on first success) using a short 3s probe timeout on a dedicated probe client, while the main data client keeps its generous 15s timeout for real artwork/library requests
+-   The last-known-good connection per server is now cached and probed first on the next launch; a hit skips discovery for that server entirely - the big win for a screensaver process that restarts constantly
+-   Corrected the ".plex.direct avoidance" comment/logic: plex.tv issues .plex.direct hostnames for nearly all connections including LAN ones (they carry the wildcard TLS cert), so hostname shape was never a reliable signal for "non-local" - local-first ordering is now driven by Plex's own `local` flag plus a cheap, DNS-free same-subnet heuristic instead
+
+### Added
+
+-   Minimal JVM unit test setup (`app/src/test`, JUnit4 + kotlinx-coroutines-test) covering connection ordering, subnet matching, dashed-IP parsing, and the first-success-wins race helper
+
 ## [0.1.4-alpha] - 2026-02-01
 
 ### Fixed
