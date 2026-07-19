@@ -1,6 +1,7 @@
 package com.willbeeching.flix.screensaver
 
 import android.animation.ArgbEvaluator
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.drawable.BitmapDrawable
@@ -56,13 +57,25 @@ class ScreensaverController(
     private var leftGradientAnimator: ValueAnimator? = null
     private var rightGradientAnimator: ValueAnimator? = null
 
+    /** The in-flight pan per backdrop view, so a new slide cancels only its own. */
+    private val panAnimators = mutableMapOf<ImageView, ObjectAnimator>()
+
     companion object {
         private const val TAG = "ScreensaverController"
-        private const val ROTATION_INTERVAL_MS = 10000L // 10 seconds total per slide
         private const val CROSSFADE_DURATION_MS = 2000L // 2 seconds for backdrop transitions
         private const val LOGO_FADE_IN_DELAY_MS = 500L // Delay after backdrop before logo appears
         private const val LOGO_FADE_DURATION_MS = 1000L // Logo fade in/out duration
         private const val LOGO_DISPLAY_TIME_MS = 15000L // How long logo stays visible
+
+        // The REAL time one slide is on screen: the rotation loop waits out the logo
+        // display, then fades the logo, then swaps. (The old ROTATION_INTERVAL_MS
+        // constant claimed 10s and no longer governed anything — it only fed the pan.)
+        private const val SLIDE_PERIOD_MS = LOGO_DISPLAY_TIME_MS + LOGO_FADE_DURATION_MS
+
+        // The pan must still be moving when the slide is swapped out, so it runs a
+        // crossfade longer than the slide lives. Motion that finishes early reads as
+        // the screensaver having frozen.
+        private const val PAN_DURATION_MS = SLIDE_PERIOD_MS + CROSSFADE_DURATION_MS
 
         // PROMO MODE: Set to true to use curated promo sequence instead of Plex library
         private const val PROMO_MODE = false
@@ -220,6 +233,8 @@ class ScreensaverController(
         leftGradientAnimator = null
         rightGradientAnimator?.cancel()
         rightGradientAnimator = null
+        panAnimators.values.forEach { it.cancel() }
+        panAnimators.clear()
     }
 
     /**
@@ -640,8 +655,10 @@ class ScreensaverController(
         // Zoom in more for a more obvious pan effect
         val scale = 1.15f
 
-        // Cancel any existing animation to prevent glitches
-        targetView.animate().cancel()
+        // Cancel only THIS view's previous pan. Deliberately not
+        // targetView.animate().cancel(): that would also kill the crossfade the
+        // caller is about to start on the same ViewPropertyAnimator.
+        panAnimators.remove(targetView)?.cancel()
         targetView.clearAnimation()
 
         // Reset position and apply zoom
@@ -650,15 +667,24 @@ class ScreensaverController(
         targetView.translationY = 0f
         targetView.translationX = startTranslateX
 
-        // Animate horizontal pan - much longer duration to continue throughout entire display
-        // Make it 2x the rotation interval to ensure smooth continuous motion
-        val animationDuration = ROTATION_INTERVAL_MS * 2
-        targetView.animate()
-            .translationX(endTranslateX)
-            .setDuration(animationDuration.toLong())
-            .setInterpolator(android.view.animation.LinearInterpolator())
-            .withEndAction(null)  // Clear any end actions
-            .start()
+        // The pan runs on its OWN ObjectAnimator rather than the view's shared
+        // ViewPropertyAnimator: a view has exactly one of those, and its setDuration()
+        // applies to every property queued on it, so the crossfade's
+        // `animate().alpha(1f).setDuration(CROSSFADE_DURATION_MS)` started moments
+        // after this could retroactively shorten the pan. Keeping them on separate
+        // animators makes the two durations independent by construction.
+        //
+        // NOTE for anyone debugging "the pan stops early": animator durations are
+        // multiplied by the system-wide Settings.Global.ANIMATOR_DURATION_SCALE.
+        // A developer-options scale of 0.5 halves this pan (18s -> 9s) and it then
+        // finishes well before the slide swaps. Check that setting before the code.
+        ObjectAnimator.ofFloat(targetView, View.TRANSLATION_X, startTranslateX, endTranslateX)
+            .apply {
+                duration = PAN_DURATION_MS
+                interpolator = android.view.animation.LinearInterpolator()
+                panAnimators[targetView] = this
+                start()
+            }
     }
 
     /**
